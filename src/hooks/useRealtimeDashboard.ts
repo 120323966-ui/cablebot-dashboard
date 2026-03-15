@@ -1,9 +1,14 @@
 import { useEffect } from 'react'
 import { createRealtimeAlert } from '@/mocks/data/dashboardHome'
-import type { HomeOverviewResponse, RealtimeMessage } from '@/types/dashboard'
+import type { ActiveTask, HomeOverviewResponse, RealtimeMessage } from '@/types/dashboard'
 
 function rand(min: number, max: number) {
   return Math.random() * (max - min) + min
+}
+
+function deriveProgress(task: Pick<ActiveTask, 'checksCompleted' | 'checksTotal' | 'progressPct'>) {
+  if (task.checksTotal <= 0) return Math.max(0, Math.min(100, task.progressPct))
+  return Math.round((task.checksCompleted / task.checksTotal) * 100)
 }
 
 export function applyRealtime(data: HomeOverviewResponse, message: RealtimeMessage): HomeOverviewResponse {
@@ -13,7 +18,14 @@ export function applyRealtime(data: HomeOverviewResponse, message: RealtimeMessa
         ? {
             ...data,
             meta: { ...data.meta, updatedAt: new Date().toISOString() },
-            activeTask: { ...data.activeTask, ...message.payload },
+            activeTask: {
+              ...data.activeTask,
+              ...message.payload,
+              progressPct: deriveProgress({
+                ...data.activeTask,
+                ...message.payload,
+              }),
+            },
           }
         : data
     case 'ROBOT_PULSE':
@@ -56,12 +68,23 @@ export function useRealtimeDashboard(
       const random = Math.random()
 
       if (random < 0.28 && data.activeTask) {
+        const nextChecksCompleted = Math.min(
+          data.activeTask.checksTotal,
+          data.activeTask.checksCompleted + 1,
+        )
+        const nextProgressPct = deriveProgress({
+          ...data.activeTask,
+          checksCompleted: nextChecksCompleted,
+        })
+        const isCompleted = nextChecksCompleted >= data.activeTask.checksTotal
+
         onMessage({
           type: 'TASK_PROGRESS',
           payload: {
-            progressPct: Math.min(100, data.activeTask.progressPct + Math.round(rand(1, 4))),
-            etaMinutes: Math.max(0, data.activeTask.etaMinutes - 1),
-            status: 'running',
+            checksCompleted: nextChecksCompleted,
+            progressPct: nextProgressPct,
+            etaMinutes: isCompleted ? 0 : Math.max(1, data.activeTask.etaMinutes - 2),
+            status: isCompleted ? 'completed' : 'running',
           },
         })
         return
@@ -73,7 +96,7 @@ export function useRealtimeDashboard(
           type: 'ROBOT_PULSE',
           payload: {
             id: robot.id,
-            batteryPct: Math.max(16, robot.batteryPct - Number(rand(0.2, 0.8).toFixed(1))),
+            batteryPct: Number(Math.max(16, robot.batteryPct - rand(0.2, 0.8)).toFixed(1)),
             signalRssi: Math.round(robot.signalRssi + rand(-2, 2)),
             temperatureC: Number((robot.temperatureC + rand(-0.6, 0.8)).toFixed(1)),
           },
@@ -89,7 +112,7 @@ export function useRealtimeDashboard(
             id: source.id,
             point: {
               time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
-              value: Number((source.points.at(-1)?.value ?? 60 + rand(-2.2, 2.8)).toFixed(1)),
+              value: Number(((source.points.at(-1)?.value ?? 60) + rand(-2.2, 2.8)).toFixed(1)),
             },
           },
         })

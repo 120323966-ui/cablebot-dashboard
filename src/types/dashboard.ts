@@ -27,7 +27,7 @@ export interface ActiveTask {
   taskId: string
   title: string
   mode: 'auto' | 'semi-auto' | 'manual'
-  status: 'running' | 'paused' | 'queued'
+  status: 'running' | 'paused' | 'queued' | 'completed'
   progressPct: number
   etaMinutes: number
   segmentId: string
@@ -103,7 +103,10 @@ export interface HomeOverviewResponse {
 }
 
 export type RealtimeMessage =
-  | { type: 'TASK_PROGRESS'; payload: Pick<ActiveTask, 'progressPct' | 'etaMinutes' | 'status'> }
+  | {
+      type: 'TASK_PROGRESS'
+      payload: Pick<ActiveTask, 'checksCompleted' | 'progressPct' | 'etaMinutes' | 'status'>
+    }
   | { type: 'ROBOT_PULSE'; payload: { id: string; batteryPct: number; signalRssi: number; temperatureC: number } }
   | { type: 'ALERT_NEW'; payload: AlertItem }
   | { type: 'TREND_APPEND'; payload: { id: string; point: TrendPoint } }

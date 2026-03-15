@@ -99,3 +99,29 @@
     @apply h-4 w-4 text-cyan-300;
   }
 }
+.alert-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(96, 165, 250, 0.35) transparent;
+}
+
+.alert-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.alert-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.alert-scroll::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(34, 211, 238, 0.35), rgba(96, 165, 250, 0.35));
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.alert-scroll::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(34, 211, 238, 0.55), rgba(96, 165, 250, 0.55));
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}

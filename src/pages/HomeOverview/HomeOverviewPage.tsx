@@ -74,10 +74,15 @@ export function HomeOverviewPage() {
         <KpiStrip metrics={merged.kpis} />
       </div>
 
-      <div className="mt-4 grid gap-4 xl:grid-cols-[1.02fr_1.18fr]">
-        <AlertFeed alerts={merged.alerts} />
-        <RiskHeatmapPanel risk={merged.risk} />
-      </div>
+      <div className="mt-8 grid gap-6 xl:grid-cols-[0.95fr_1.15fr]">
+  <div className="min-h-0 xl:h-[460px]">
+    <AlertFeed alerts={merged.alerts} />
+  </div>
+
+  <div className="min-h-0 xl:h-[460px]">
+    <RiskHeatmapPanel risk={merged.risk} />
+  </div>
+</div>
 
       <div className="mt-4 grid gap-4 xl:grid-cols-[0.95fr_1.15fr]">
         <RobotStatusPanel robots={merged.robots} />

@@ -24,7 +24,7 @@ export function RobotStatusPanel({ robots }: { robots: RobotOverview[] }) {
               <Badge tone={toneOf(robot.health)}>{robot.health}</Badge>
             </div>
             <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <div className="robot-stat"><BatteryCharging className="robot-stat-icon" />{robot.batteryPct}%</div>
+              <div className="robot-stat"><BatteryCharging className="robot-stat-icon" />{Math.round(robot.batteryPct)}%</div>
               <div className="robot-stat"><Radio className="robot-stat-icon" />{robot.signalRssi} dBm</div>
               <div className="robot-stat"><Thermometer className="robot-stat-icon" />{robot.temperatureC}°C</div>
               <div className="robot-stat"><Timer className="robot-stat-icon" />{robot.speedKmh} km/h</div>
