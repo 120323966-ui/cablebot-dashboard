@@ -1,9 +1,30 @@
 import { useEffect, useRef } from 'react'
 import { createRealtimeAlert } from '@/mocks/data/dashboardHome'
-import type { HomeOverviewResponse, RealtimeMessage } from '@/types/dashboard'
+import type { ActiveTask, HomeOverviewResponse, RealtimeMessage } from '@/types/dashboard'
 
 function rand(min: number, max: number) {
   return Math.random() * (max - min) + min
+}
+
+function deriveTaskProgress(checksCompleted: number, checksTotal: number) {
+  if (checksTotal <= 0) return 0
+  return Math.round((checksCompleted / checksTotal) * 100)
+}
+
+function getNextTrendTime(lastTime?: string) {
+  const now = new Date()
+  now.setSeconds(0, 0)
+
+  if (!lastTime) return now.toISOString()
+
+  const last = new Date(lastTime)
+  if (Number.isNaN(last.getTime())) return now.toISOString()
+
+  if (now.getTime() > last.getTime()) return now.toISOString()
+
+  const next = new Date(last)
+  next.setMinutes(next.getMinutes() + 1)
+  return next.toISOString()
 }
 
 export function applyRealtime(
@@ -80,15 +101,28 @@ export function useRealtimeDashboard(
       const random = Math.random()
 
       if (random < 0.34 && current.activeTask) {
+        const task = current.activeTask
+        const nextChecksCompleted = Math.min(
+          task.checksTotal,
+          task.checksCompleted + 1,
+        )
+        const nextProgressPct = nextChecksCompleted >= task.checksTotal
+          ? 100
+          : deriveTaskProgress(nextChecksCompleted, task.checksTotal)
+        const nextStatus: ActiveTask['status'] = nextChecksCompleted >= task.checksTotal
+          ? 'completed'
+          : 'running'
+        const nextEtaMinutes = nextStatus === 'completed'
+          ? 0
+          : Math.max(0, task.etaMinutes - 1)
+
         onMessage({
           type: 'TASK_PROGRESS',
           payload: {
-            progressPct: Math.min(
-              100,
-              current.activeTask.progressPct + Math.round(rand(1, 4)),
-            ),
-            etaMinutes: Math.max(0, current.activeTask.etaMinutes - 1),
-            status: 'running',
+            checksCompleted: nextChecksCompleted,
+            progressPct: nextProgressPct,
+            etaMinutes: nextEtaMinutes,
+            status: nextStatus,
           },
         })
         return
@@ -123,10 +157,7 @@ export function useRealtimeDashboard(
         payload: {
           id: source.id,
           point: {
-            time: new Date().toLocaleTimeString('zh-CN', {
-              hour: '2-digit',
-              minute: '2-digit',
-            }),
+            time: getNextTrendTime(source.points.at(-1)?.time),
             value: Number(
               ((source.points.at(-1)?.value ?? 60) + rand(-2.2, 2.8)).toFixed(1),
             ),

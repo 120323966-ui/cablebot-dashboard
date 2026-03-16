@@ -1,14 +1,32 @@
 import type { AlertItem, HomeOverviewResponse, TrendPoint } from '@/types/dashboard'
 
+const TREND_POINTS = 12
+const TREND_STEP_MINUTES = 10
+
 function isoMinutesAgo(minutes: number) {
   return new Date(Date.now() - minutes * 60_000).toISOString()
 }
 
+function alignToStep(date: Date, stepMinutes: number) {
+  const aligned = new Date(date)
+  aligned.setSeconds(0, 0)
+  const minute = aligned.getMinutes()
+  aligned.setMinutes(minute - (minute % stepMinutes))
+  return aligned
+}
+
 function buildTrend(base: number, wobble: number): TrendPoint[] {
-  return Array.from({ length: 12 }, (_, idx) => ({
-    time: `${String(idx * 2).padStart(2, '0')}:00`,
-    value: Number((base + Math.sin(idx / 2) * wobble + (idx % 3) * 0.9).toFixed(1)),
-  }))
+  const end = alignToStep(new Date(), TREND_STEP_MINUTES)
+
+  return Array.from({ length: TREND_POINTS }, (_, idx) => {
+    const pointTime = new Date(end)
+    pointTime.setMinutes(end.getMinutes() - (TREND_POINTS - 1 - idx) * TREND_STEP_MINUTES)
+
+    return {
+      time: pointTime.toISOString(),
+      value: Number((base + Math.sin(idx / 2) * wobble + (idx % 3) * 0.9).toFixed(1)),
+    }
+  })
 }
 
 export function createHomeOverviewMock(): HomeOverviewResponse {
