@@ -62,6 +62,8 @@ export interface HeatCell {
   y: number
   risk: number
   label: string
+  kind?: 'temperature' | 'humidity' | 'water' | 'review' | 'normal'
+  trend?: 'up' | 'down' | 'steady'
 }
 
 export interface RiskHeatmap {
