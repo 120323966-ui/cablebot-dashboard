@@ -75,12 +75,17 @@ export function HomeOverviewPage() {
       </div>
 
       <div className="mt-4 grid gap-4 xl:grid-cols-[1.02fr_1.18fr]">
-  <AlertFeed alerts={merged.alerts} />
-  <RiskHeatmapPanel
-    risk={merged.risk}
-    alerts={merged.alerts}
-    activeTask={merged.activeTask}
-  />
+  <div className="min-h-0">
+    <AlertFeed alerts={merged.alerts} />
+  </div>
+
+  <div className="min-h-0">
+    <RiskHeatmapPanel
+      risk={merged.risk}
+      alerts={merged.alerts}
+      activeTask={merged.activeTask}
+    />
+  </div>
 </div>
 
       <div className="mt-4 grid gap-4 xl:grid-cols-[0.95fr_1.15fr]">
