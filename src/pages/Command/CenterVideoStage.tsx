@@ -1,5 +1,5 @@
 import { Maximize2, Radar } from 'lucide-react'
-import { Badge } from '@/components/ui/Badge'
+import { TunnelSimulation } from './TunnelSimulation'
 import type {
   ControlState,
   CommandMission,
@@ -42,10 +42,8 @@ export function CenterVideoStage({
     <section className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-white/8 bg-slate-950/60">
       {/* Full video area */}
       <div className="relative min-h-0 flex-1 overflow-hidden bg-[#040d18]">
-        {/* Simulated tunnel view background */}
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_10%,rgba(34,211,238,0.12),transparent_22%),linear-gradient(180deg,rgba(8,23,37,0.6),rgba(3,9,17,0.95))]" />
-        <div className="pointer-events-none absolute inset-x-[6%] top-[14%] h-[64%] rounded-[999px] border border-white/5 bg-[radial-gradient(circle_at_50%_2%,rgba(148,163,184,0.12),transparent_16%),linear-gradient(180deg,rgba(19,32,52,0.15),rgba(2,6,23,0.8))]" />
-        <div className="pointer-events-none absolute inset-x-[20%] top-[38%] h-[36%] rounded-[999px] border border-white/4 bg-[radial-gradient(circle_at_50%_0%,rgba(56,189,248,0.08),transparent_14%)]" />
+        {/* Simulated tunnel camera feed */}
+        <TunnelSimulation lightOn={control.lightOn} stabilizationOn={control.stabilizationOn} />
 
         {/* Crosshair */}
         <div className="pointer-events-none absolute left-1/2 top-1/2 z-10 h-14 w-14 -translate-x-1/2 -translate-y-1/2 rounded-full border border-cyan-300/20">
