@@ -3,7 +3,6 @@ import { Button } from '@/components/ui/Button'
 import { BottomControlDock } from './BottomControlDock'
 import { CenterVideoStage } from './CenterVideoStage'
 import { CommandHeaderBar } from './CommandHeaderBar'
-import { LeftStatusRail } from './LeftStatusRail'
 import { RightCommandRail } from './RightCommandRail'
 import { useCommandCenter } from '@/hooks/useCommandCenter'
 import {
@@ -62,25 +61,11 @@ export function CommandPage() {
   const currentControl = dockState ?? merged.control
 
   const updateMode = (mode: CommandMode) => {
-    setDockState((current) =>
-      current
-        ? {
-            ...current,
-            driveMode: mode,
-          }
-        : current,
-    )
+    setDockState((c) => (c ? { ...c, driveMode: mode } : c))
   }
 
   const toggleControl = (key: 'lightOn' | 'stabilizationOn' | 'recording') => {
-    setDockState((current) =>
-      current
-        ? {
-            ...current,
-            [key]: !current[key],
-          }
-        : current,
-    )
+    setDockState((c) => (c ? { ...c, [key]: !c[key] } : c))
   }
 
   const triggerAction = (label: string) => {
@@ -88,47 +73,43 @@ export function CommandPage() {
   }
 
   return (
-    <section className="grid h-[calc(100vh-148px)] min-h-0 grid-cols-[260px_minmax(0,1fr)_340px] grid-rows-[auto_minmax(0,1fr)_104px] gap-3 overflow-hidden">
-      <div className="col-span-3 min-h-0">
-        <CommandHeaderBar
-          meta={merged.meta}
-          mission={merged.mission}
-          robot={merged.robot}
-        />
+    <section className="flex h-[calc(100vh-148px)] min-h-0 flex-col gap-2.5 overflow-hidden">
+      {/* A — Slim header strip */}
+      <CommandHeaderBar
+        meta={merged.meta}
+        mission={merged.mission}
+        robot={merged.robot}
+      />
+
+      {/* B — Main stage: video + context sidebar */}
+      <div className="flex min-h-0 flex-1 gap-2.5">
+        <div className="min-h-0 min-w-0 flex-1">
+          <CenterVideoStage
+            video={merged.primaryVideo}
+            mission={merged.mission}
+            control={currentControl}
+          />
+        </div>
+
+        <div className="w-[280px] shrink-0">
+          <RightCommandRail
+            robot={merged.robot}
+            mission={merged.mission}
+            sensors={merged.sensors}
+            auxViews={merged.auxViews}
+            events={merged.events}
+            voice={merged.voice}
+          />
+        </div>
       </div>
 
-      <div className="min-h-0 overflow-hidden">
-        <LeftStatusRail
-          mission={merged.mission}
-          robot={merged.robot}
-          sensors={merged.sensors}
-        />
-      </div>
-
-      <div className="min-h-0 overflow-hidden">
-        <CenterVideoStage
-          video={merged.primaryVideo}
-          mission={merged.mission}
-          control={currentControl}
-        />
-      </div>
-
-      <div className="min-h-0 overflow-hidden">
-        <RightCommandRail
-          auxViews={merged.auxViews}
-          events={merged.events}
-          voice={merged.voice}
-        />
-      </div>
-
-      <div className="col-span-3 row-start-3 min-h-0">
-        <BottomControlDock
-          control={currentControl}
-          onModeChange={updateMode}
-          onToggle={toggleControl}
-          onAction={triggerAction}
-        />
-      </div>
+      {/* C — Bottom control dock */}
+      <BottomControlDock
+        control={currentControl}
+        onModeChange={updateMode}
+        onToggle={toggleControl}
+        onAction={triggerAction}
+      />
     </section>
   )
 }

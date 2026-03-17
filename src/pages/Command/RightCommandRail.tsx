@@ -1,12 +1,38 @@
-import { Mic, Sparkles } from 'lucide-react'
+import { useState } from 'react'
+import {
+  BatteryCharging,
+  ChevronDown,
+  Compass,
+  Mic,
+  Radio,
+  Route,
+  Sparkles,
+  Thermometer,
+  Triangle,
+} from 'lucide-react'
 import { Badge } from '@/components/ui/Badge'
-import { Card } from '@/components/ui/Card'
-import type { AuxView, CommandEvent, VoicePanelState } from '@/types/command'
+import type {
+  AuxView,
+  CommandEvent,
+  CommandMission,
+  CommandRobotState,
+  SensorMetric,
+  SensorStatus,
+  VoicePanelState,
+} from '@/types/command'
 
-function viewTone(status: AuxView['status']) {
-  if (status === 'live') return 'danger' as const
-  if (status === 'queued') return 'warning' as const
-  return 'neutral' as const
+/* ── Helpers ─────────────────────────────────────────── */
+
+function sensorTone(status: SensorStatus) {
+  if (status === 'danger') return 'danger' as const
+  if (status === 'watch') return 'warning' as const
+  return 'good' as const
+}
+
+function trendArrow(trend: SensorMetric['trend']) {
+  if (trend === 'up') return '↑'
+  if (trend === 'down') return '↓'
+  return '→'
 }
 
 function eventTone(severity: CommandEvent['severity']) {
@@ -15,124 +41,259 @@ function eventTone(severity: CommandEvent['severity']) {
   return 'neutral' as const
 }
 
-function eventStatusLabel(status: CommandEvent['status']) {
-  if (status === 'new') return 'new'
-  if (status === 'processing') return 'processing'
-  return 'ack'
+function viewTone(status: AuxView['status']) {
+  if (status === 'live') return 'danger' as const
+  if (status === 'queued') return 'warning' as const
+  return 'neutral' as const
 }
 
+function networkLabel(quality: CommandRobotState['networkQuality']) {
+  if (quality === 'excellent') return '优秀'
+  if (quality === 'good') return '良好'
+  return '波动'
+}
+
+function networkTone(quality: CommandRobotState['networkQuality']) {
+  if (quality === 'excellent') return 'good' as const
+  if (quality === 'good') return 'neutral' as const
+  return 'warning' as const
+}
+
+/* ── Collapsible panel wrapper ───────────────────────── */
+
+function Panel({
+  title,
+  badge,
+  defaultOpen = true,
+  children,
+}: {
+  title: string
+  badge?: React.ReactNode
+  defaultOpen?: boolean
+  children: React.ReactNode
+}) {
+  const [open, setOpen] = useState(defaultOpen)
+  return (
+    <div className="border-b border-white/6 last:border-b-0">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center justify-between gap-2 px-3.5 py-2.5 text-left transition hover:bg-white/[0.03]"
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-[12px] font-medium text-slate-300">{title}</span>
+          {badge}
+        </div>
+        <ChevronDown
+          className={`h-3.5 w-3.5 text-slate-500 transition-transform ${open ? 'rotate-0' : '-rotate-90'}`}
+        />
+      </button>
+      {open && <div className="px-3.5 pb-3">{children}</div>}
+    </div>
+  )
+}
+
+/* ── Quick stat in a mini grid ───────────────────────── */
+
+function MiniStat({
+  icon,
+  label,
+  value,
+}: {
+  icon: React.ReactNode
+  label: string
+  value: string
+}) {
+  return (
+    <div className="rounded-lg border border-white/6 bg-white/[0.02] px-2.5 py-2">
+      <div className="flex items-center gap-1.5 text-[10px] text-slate-500">
+        {icon}
+        {label}
+      </div>
+      <div className="mt-1 text-[15px] font-semibold leading-none text-white">{value}</div>
+    </div>
+  )
+}
+
+/* ── Main component ──────────────────────────────────── */
+
 export function RightCommandRail({
+  robot,
+  mission,
+  sensors,
   auxViews,
   events,
   voice,
 }: {
+  robot: CommandRobotState
+  mission: CommandMission
+  sensors: SensorMetric[]
   auxViews: AuxView[]
   events: CommandEvent[]
   voice: VoicePanelState
 }) {
-  const primaryAux = auxViews[0]
-  const secondaryAux = auxViews.slice(1, 4)
+  const abnormalSensors = sensors.filter((s) => s.status !== 'normal')
+  const recentEvents = events.slice(0, 4)
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3">
-      <Card className="shrink-0" eyebrow="Aux Visuals" title="辅助画面">
-        <div className="rounded-[22px] border border-white/8 bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.12),transparent_36%),linear-gradient(180deg,rgba(15,23,42,0.6),rgba(2,6,23,0.92))] p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="text-[28px] font-semibold tracking-tight text-white">
-                {primaryAux.title}
-              </div>
-              <div className="mt-1 text-sm text-slate-300">{primaryAux.subtitle}</div>
-            </div>
-
-            <Badge tone={viewTone(primaryAux.status)}>{primaryAux.status}</Badge>
-          </div>
-
-          <div className="mt-4 h-36 rounded-[20px] border border-white/8 bg-[linear-gradient(180deg,rgba(56,189,248,0.12),rgba(2,6,23,0.84))]" />
+    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-white/8 bg-slate-950/50 backdrop-blur-xl">
+      {/* Robot identity header (always visible) */}
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-white/6 px-3.5 py-3">
+        <div className="min-w-0">
+          <div className="truncate text-[13px] font-semibold text-white">{robot.name}</div>
+          <div className="mt-0.5 truncate text-[11px] text-slate-400">{robot.location}</div>
         </div>
+        <div className="flex items-center gap-1.5">
+          <Badge tone={robot.onlineState === 'online' ? 'good' : 'warning'}>
+            {robot.onlineState}
+          </Badge>
+          <Badge tone={networkTone(robot.networkQuality)}>
+            {networkLabel(robot.networkQuality)}
+          </Badge>
+        </div>
+      </div>
 
-        <div className="mt-3 grid grid-cols-3 gap-2">
-          {secondaryAux.map((view) => (
-            <div
-              key={view.id}
-              className="rounded-[18px] border border-white/8 bg-white/[0.03] p-3"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-xs font-medium text-white">{view.title}</div>
+      {/* Scrollable panels */}
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {/* 1. Robot telemetry */}
+        <Panel title="遥测数据">
+          <div className="grid grid-cols-2 gap-1.5">
+            <MiniStat
+              icon={<BatteryCharging className="h-3 w-3 text-cyan-300" />}
+              label="电量"
+              value={`${Math.round(robot.batteryPct)}%`}
+            />
+            <MiniStat
+              icon={<Route className="h-3 w-3 text-cyan-300" />}
+              label="区段"
+              value={mission.segmentId}
+            />
+            <MiniStat
+              icon={<Thermometer className="h-3 w-3 text-cyan-300" />}
+              label="相机温度"
+              value={`${robot.cameraTempC}°C`}
+            />
+            <MiniStat
+              icon={<Compass className="h-3 w-3 text-cyan-300" />}
+              label="朝向"
+              value={`${robot.headingDeg}°`}
+            />
+          </div>
+          <div className="mt-1.5 flex items-center gap-3 rounded-lg border border-white/6 bg-white/[0.02] px-2.5 py-2 text-[12px]">
+            <span className="text-slate-400">速度</span>
+            <span className="font-medium text-white">{robot.speedKmh} km/h</span>
+            <span className="text-slate-400 ml-auto">姿态</span>
+            <span className="font-medium text-white">P{robot.pitchDeg}° R{robot.rollDeg}°</span>
+          </div>
+        </Panel>
+
+        {/* 2. Sensors — show abnormal first, then collapsed normal */}
+        <Panel
+          title="传感器"
+          badge={
+            abnormalSensors.length > 0 ? (
+              <Badge tone="warning">{abnormalSensors.length} 异常</Badge>
+            ) : (
+              <Badge tone="good">正常</Badge>
+            )
+          }
+        >
+          <div className="space-y-1.5">
+            {sensors.map((sensor) => (
+              <div
+                key={sensor.id}
+                className="flex items-center justify-between gap-2 rounded-lg border border-white/6 bg-white/[0.02] px-2.5 py-2"
+              >
+                <div className="min-w-0">
+                  <div className="truncate text-[12px] font-medium text-white">{sensor.label}</div>
+                  <div className="mt-0.5 truncate text-[10px] text-slate-500">{sensor.hint}</div>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <span className="text-[13px] font-semibold text-white">
+                    {sensor.value}
+                    <span className="ml-0.5 text-[10px] font-normal text-slate-400">{sensor.unit}</span>
+                  </span>
+                  <span className="text-[11px] text-slate-400">{trendArrow(sensor)}</span>
+                  <Badge tone={sensorTone(sensor.status)}>
+                    {sensor.status === 'normal' ? 'ok' : sensor.status}
+                  </Badge>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Panel>
+
+        {/* 3. Aux camera views */}
+        <Panel title="辅助画面" defaultOpen={false}>
+          <div className="space-y-1.5">
+            {auxViews.slice(0, 4).map((view) => (
+              <div
+                key={view.id}
+                className="flex items-center justify-between gap-2 rounded-lg border border-white/6 bg-white/[0.02] px-2.5 py-2"
+              >
+                <div className="min-w-0">
+                  <div className="truncate text-[12px] font-medium text-white">{view.title}</div>
+                  <div className="mt-0.5 truncate text-[10px] text-slate-400">{view.subtitle}</div>
+                </div>
                 <Badge tone={viewTone(view.status)}>{view.status}</Badge>
               </div>
-              <div className="mt-2 line-clamp-2 text-[11px] leading-5 text-slate-400">
-                {view.subtitle}
-              </div>
-            </div>
-          ))}
-        </div>
-      </Card>
-
-      <Card className="min-h-0 flex-1" eyebrow="Event Stream" title="事件流">
-        <div className="flex h-full min-h-0 flex-col">
-          <div className="mb-3 text-sm leading-6 text-slate-300">
-            仅保留与主视频联动最强的最近事件。
+            ))}
           </div>
+        </Panel>
 
-          <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
-            {events.map((event) => (
-              <article
+        {/* 4. Event stream */}
+        <Panel
+          title="事件"
+          badge={<Badge tone="neutral">{events.length}</Badge>}
+        >
+          <div className="space-y-1.5">
+            {recentEvents.map((event) => (
+              <div
                 key={event.id}
-                className="rounded-[18px] border border-white/8 bg-white/[0.03] p-4 transition hover:border-cyan-400/20 hover:bg-white/[0.05]"
+                className="rounded-lg border border-white/6 bg-white/[0.02] px-2.5 py-2"
               >
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="font-medium text-white">{event.title}</div>
+                <div className="flex items-center gap-1.5">
+                  <span className="truncate text-[12px] font-medium text-white">{event.title}</span>
                   <Badge tone={eventTone(event.severity)}>{event.severity}</Badge>
-                  <Badge tone="neutral">{eventStatusLabel(event.status)}</Badge>
                 </div>
-
-                <div className="mt-2 text-sm leading-6 text-slate-300">{event.detail}</div>
-
-                <div className="mt-2 text-xs text-slate-500">
-                  {event.segmentId} · {event.source} ·{' '}
-                  {new Date(event.occurredAt).toLocaleTimeString('zh-CN')}
+                <div className="mt-1 line-clamp-1 text-[10px] leading-4 text-slate-400">
+                  {event.detail}
                 </div>
-              </article>
-            ))}
-          </div>
-        </div>
-      </Card>
-
-      <Card className="shrink-0" eyebrow="Multimodal" title="语音 / 指令">
-        <div className="rounded-[20px] border border-cyan-400/15 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.12),transparent_42%)] p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <div className="text-base font-medium text-white">人机协同待命</div>
-              <div className="mt-1 text-sm text-slate-300">
-                保留轻量语音入口，不打断主视频判断。
+                <div className="mt-1 text-[10px] text-slate-500">
+                  {event.segmentId} · {new Date(event.occurredAt).toLocaleTimeString('zh-CN')}
+                </div>
               </div>
-            </div>
-            <Badge tone={voice.listening ? 'danger' : 'good'}>
-              {voice.listening ? 'Listening' : 'Standby'}
-            </Badge>
-          </div>
-
-          <div className="mt-3 rounded-[16px] border border-white/8 bg-white/[0.03] px-3 py-2.5 text-sm text-slate-200">
-            <div className="flex items-center gap-2">
-              <Mic className="h-4 w-4 text-cyan-300" />
-              最近识别：{voice.transcript || '暂无'}
-            </div>
-          </div>
-
-          <div className="mt-3 flex flex-wrap gap-2">
-            {voice.suggested.slice(0, 3).map((item) => (
-              <span
-                key={item}
-                className="inline-flex items-center gap-1 rounded-full border border-cyan-400/15 bg-cyan-400/10 px-3 py-1.5 text-xs text-cyan-100"
-              >
-                <Sparkles className="h-3 w-3" />
-                {item}
-              </span>
             ))}
           </div>
-        </div>
-      </Card>
+        </Panel>
+
+        {/* 5. Voice / command */}
+        <Panel title="语音指令" defaultOpen={false}>
+          <div className="rounded-lg border border-cyan-400/12 bg-cyan-400/5 px-2.5 py-2">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 text-[12px] text-slate-300">
+                <Mic className="h-3.5 w-3.5 text-cyan-300" />
+                {voice.transcript || '暂无识别内容'}
+              </div>
+              <Badge tone={voice.listening ? 'danger' : 'good'}>
+                {voice.listening ? 'REC' : '待命'}
+              </Badge>
+            </div>
+            {voice.suggested.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1">
+                {voice.suggested.slice(0, 3).map((cmd) => (
+                  <span
+                    key={cmd}
+                    className="inline-flex items-center gap-0.5 rounded-full border border-cyan-400/12 bg-cyan-400/8 px-2 py-0.5 text-[10px] text-cyan-200"
+                  >
+                    <Sparkles className="h-2.5 w-2.5" />
+                    {cmd}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        </Panel>
+      </div>
     </div>
   )
 }
