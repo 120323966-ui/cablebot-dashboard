@@ -109,7 +109,9 @@ export function useRealtimeCommandCenter(
           progressPct: nextProgress,
           elapsedMinutes: current.mission.elapsedMinutes + 1,
           etaMinutes: nextEta,
-          status: nextProgress >= 100 ? 'attention' : 'running',
+          ...(current.mission.status === 'paused' || current.mission.status === 'attention'
+            ? {}
+            : { status: nextProgress >= 100 ? 'attention' : 'running' }),
         },
       })
 

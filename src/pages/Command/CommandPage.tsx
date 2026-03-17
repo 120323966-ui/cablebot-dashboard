@@ -4,6 +4,7 @@ import { BottomControlDock } from './BottomControlDock'
 import { CenterVideoStage } from './CenterVideoStage'
 import { CommandHeaderBar } from './CommandHeaderBar'
 import { RightCommandRail } from './RightCommandRail'
+import { VoiceOverlay } from './VoiceOverlay'
 import { useCommandCenter } from '@/hooks/useCommandCenter'
 import {
   applyCommandRealtime,
@@ -20,6 +21,7 @@ export function CommandPage() {
   const { data, loading, error } = useCommandCenter()
   const [liveData, setLiveData] = useState<CommandCenterResponse | null>(null)
   const [dockState, setDockState] = useState<ControlState | null>(null)
+  const [voiceOpen, setVoiceOpen] = useState(false)
 
   const merged = useMemo(() => liveData ?? data, [data, liveData])
 
@@ -69,7 +71,35 @@ export function CommandPage() {
   }
 
   const triggerAction = (label: string) => {
+    if (label === '暂停巡检') {
+      setLiveData((c) => {
+        if (!c) return c
+        const isPaused = c.mission.status === 'paused'
+        return {
+          ...c,
+          mission: { ...c.mission, status: isPaused ? 'running' : 'paused' },
+        }
+      })
+      return
+    }
+
+    if (label === '急停') {
+      setLiveData((c) => {
+        if (!c) return c
+        const isStopped = c.mission.status === 'attention'
+        return {
+          ...c,
+          mission: { ...c.mission, status: isStopped ? 'running' : 'attention' },
+        }
+      })
+      return
+    }
+
     window.alert(`已触发控制动作：${label}`)
+  }
+
+  const handleVoiceCommand = (cmd: string) => {
+    window.alert(`语音指令已发送：${cmd}`)
   }
 
   return (
@@ -83,14 +113,25 @@ export function CommandPage() {
 
       {/* B — Main stage: video + context sidebar */}
       <div className="flex min-h-0 flex-1 gap-2.5">
-        <div className="min-h-0 min-w-0 flex-1">
+        {/* B1 — Video area (relative container for voice overlay) */}
+        <div className="relative min-h-0 min-w-0 flex-1">
           <CenterVideoStage
             video={merged.primaryVideo}
             mission={merged.mission}
             control={currentControl}
           />
+
+          {/* Voice overlay — appears on top of video */}
+          {voiceOpen && (
+            <VoiceOverlay
+              voice={merged.voice}
+              onClose={() => setVoiceOpen(false)}
+              onCommand={handleVoiceCommand}
+            />
+          )}
         </div>
 
+        {/* B2 — Context sidebar */}
         <div className="w-[280px] shrink-0">
           <RightCommandRail
             robot={merged.robot}
@@ -98,7 +139,6 @@ export function CommandPage() {
             sensors={merged.sensors}
             auxViews={merged.auxViews}
             events={merged.events}
-            voice={merged.voice}
           />
         </div>
       </div>
@@ -106,9 +146,12 @@ export function CommandPage() {
       {/* C — Bottom control dock */}
       <BottomControlDock
         control={currentControl}
+        missionStatus={merged.mission.status}
+        voiceActive={voiceOpen}
         onModeChange={updateMode}
         onToggle={toggleControl}
         onAction={triggerAction}
+        onVoice={() => setVoiceOpen(!voiceOpen)}
       />
     </section>
   )

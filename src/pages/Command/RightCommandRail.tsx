@@ -3,10 +3,8 @@ import {
   BatteryCharging,
   ChevronDown,
   Compass,
-  Mic,
   Radio,
   Route,
-  Sparkles,
   Thermometer,
   Triangle,
 } from 'lucide-react'
@@ -18,7 +16,6 @@ import type {
   CommandRobotState,
   SensorMetric,
   SensorStatus,
-  VoicePanelState,
 } from '@/types/command'
 
 /* ── Helpers ─────────────────────────────────────────── */
@@ -122,17 +119,15 @@ export function RightCommandRail({
   sensors,
   auxViews,
   events,
-  voice,
 }: {
   robot: CommandRobotState
   mission: CommandMission
   sensors: SensorMetric[]
   auxViews: AuxView[]
   events: CommandEvent[]
-  voice: VoicePanelState
 }) {
   const abnormalSensors = sensors.filter((s) => s.status !== 'normal')
-  const recentEvents = events.slice(0, 4)
+  const recentEvents = events
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-white/8 bg-slate-950/50 backdrop-blur-xl">
@@ -263,34 +258,6 @@ export function RightCommandRail({
                 </div>
               </div>
             ))}
-          </div>
-        </Panel>
-
-        {/* 5. Voice / command */}
-        <Panel title="语音指令" defaultOpen={false}>
-          <div className="rounded-lg border border-cyan-400/12 bg-cyan-400/5 px-2.5 py-2">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-1.5 text-[12px] text-slate-300">
-                <Mic className="h-3.5 w-3.5 text-cyan-300" />
-                {voice.transcript || '暂无识别内容'}
-              </div>
-              <Badge tone={voice.listening ? 'danger' : 'good'}>
-                {voice.listening ? 'REC' : '待命'}
-              </Badge>
-            </div>
-            {voice.suggested.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1">
-                {voice.suggested.slice(0, 3).map((cmd) => (
-                  <span
-                    key={cmd}
-                    className="inline-flex items-center gap-0.5 rounded-full border border-cyan-400/12 bg-cyan-400/8 px-2 py-0.5 text-[10px] text-cyan-200"
-                  >
-                    <Sparkles className="h-2.5 w-2.5" />
-                    {cmd}
-                  </span>
-                ))}
-              </div>
-            )}
           </div>
         </Panel>
       </div>
