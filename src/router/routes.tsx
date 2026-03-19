@@ -3,6 +3,7 @@ import { ShellLayout } from '@/components/layout/ShellLayout'
 import { AlertsPage } from '@/pages/Alerts/AlertsPage'
 import { CommandPage } from '@/pages/Command/CommandPage'
 import { HomeOverviewPage } from '@/pages/HomeOverview/HomeOverviewPage'
+import { SpatialPage } from '@/pages/Spatial/SpatialPage'
 import { PlaceholderPage } from '@/pages/Placeholder/PlaceholderPage'
 
 export const router = createBrowserRouter([
@@ -14,7 +15,7 @@ export const router = createBrowserRouter([
       { path: 'overview', element: <HomeOverviewPage /> },
       { path: 'command', element: <CommandPage /> },
       { path: 'alerts', element: <AlertsPage /> },
-      { path: 'spatial', element: <PlaceholderPage kind="spatial" /> },
+      { path: 'spatial', element: <SpatialPage /> },
       { path: 'history', element: <PlaceholderPage kind="history" /> },
       { path: 'reports', element: <PlaceholderPage kind="reports" /> },
     ],
