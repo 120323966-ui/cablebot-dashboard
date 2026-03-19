@@ -1,7 +1,8 @@
-import { Bot, MapPin } from 'lucide-react'
+import { useCallback, useState } from 'react'
+import { Bot, MapPin, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { useSpatial } from '@/hooks/useSpatial'
-import { CrossSectionView } from './CrossSectionView'
+import { PointCloudView } from './PointCloudView'
 import { PipelineMap } from './PipelineMap'
 import { RobotControlPanel } from './RobotControlPanel'
 import { SpatialInfoPanel } from './SpatialInfoPanel'
@@ -13,6 +14,16 @@ export function SpatialPage() {
     selectSegment, selectRobot,
     updateRobotStatus, moveRobotToSegment, updateRobotSpeed,
   } = useSpatial()
+
+  const [focusAlertId, setFocusAlertId] = useState<string | null>(null)
+
+  /* 每次点击用时间戳保证重复点击同一告警也能触发飞行 */
+  const [focusKey, setFocusKey] = useState(0)
+
+  const handleAlertClick = useCallback((alertId: string) => {
+    setFocusAlertId(alertId)
+    setFocusKey((k) => k + 1)
+  }, [])
 
   if (loading) {
     return <div className="panel-card min-h-[520px] animate-pulse bg-white/[0.03]" />
@@ -32,12 +43,19 @@ export function SpatialPage() {
 
   const activeSeg = data.segments.find((s) => s.id === selectedSegment) ?? null
   const activeSensors = selectedSegment ? (data.sensors[selectedSegment] ?? []) : []
+  const activeAlerts = selectedSegment ? data.alerts.filter((a) => a.segmentId === selectedSegment) : []
   const activeRobot = data.robots.find((r) => r.id === selectedRobot) ?? null
+
+  const handleDeselect = () => {
+    selectSegment(null)
+    selectRobot(null)
+    setFocusAlertId(null)
+  }
 
   return (
     <div className="flex h-[calc(100vh-148px)] flex-col gap-4 overflow-hidden">
       <div className="flex min-h-0 flex-1 gap-4">
-        {/* Left: Map + Cross section */}
+        {/* Left: Map + Point cloud */}
         <div className="flex min-w-0 flex-[7] flex-col gap-3">
           <div className="min-h-0 flex-1 overflow-hidden rounded-2xl border border-white/8 bg-slate-950/40 p-3">
             <PipelineMap
@@ -49,16 +67,30 @@ export function SpatialPage() {
               selectedRobot={selectedRobot}
               onSelectSegment={selectSegment}
               onSelectRobot={selectRobot}
+              onDeselect={handleDeselect}
             />
           </div>
           {activeSeg && (
-            <div className="shrink-0">
-              <CrossSectionView segment={activeSeg} sensors={activeSensors} />
+            <div className="relative shrink-0">
+              <button
+                onClick={() => selectSegment(null)}
+                className="absolute right-3 top-3 z-10 flex h-7 w-7 items-center justify-center rounded-lg border border-white/10 bg-slate-900/80 text-slate-400 transition hover:border-white/20 hover:text-white"
+                title="关闭点云视图"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+              <PointCloudView
+                key={activeSeg.id}
+                segment={activeSeg}
+                sensors={activeSensors}
+                alerts={activeAlerts}
+                focusAlertId={focusAlertId ? `${focusAlertId}__${focusKey}` : null}
+              />
             </div>
           )}
         </div>
 
-        {/* Right: Info panel (segment detail OR robot control) */}
+        {/* Right: Info panel */}
         <div className="flex w-[300px] shrink-0 flex-col overflow-hidden rounded-2xl border border-white/8 bg-slate-950/40">
           {activeRobot ? (
             <RobotControlPanel
@@ -73,6 +105,7 @@ export function SpatialPage() {
               segment={activeSeg}
               alerts={data.alerts}
               robots={data.robots}
+              onAlertClick={handleAlertClick}
             />
           ) : (
             <div className="flex flex-1 items-center justify-center">

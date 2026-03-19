@@ -55,13 +55,11 @@ export function CrossSectionView({
 
   return (
     <div className="rounded-xl border border-white/8 bg-[#060e18] p-3">
-      <div className="mb-2 flex items-center justify-between">
+      <div className="mb-2 ">
         <span className="text-[11px] uppercase tracking-[0.2em] text-slate-500">
           {segment.id} 区段剖面视图
         </span>
-        <span className="text-[10px] text-slate-600">
-          等轴测示意 · 非精确比例
-        </span>
+        
       </div>
 
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full">

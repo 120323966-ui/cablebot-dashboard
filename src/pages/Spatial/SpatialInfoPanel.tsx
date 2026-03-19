@@ -2,6 +2,7 @@ import {
   AlertTriangle,
   Battery,
   Clock,
+  Crosshair,
   Gauge,
   MapPin,
   Thermometer,
@@ -46,10 +47,12 @@ export function SpatialInfoPanel({
   segment,
   alerts,
   robots,
+  onAlertClick,
 }: {
   segment: PipeSegment
   alerts: PipeAlert[]
   robots: RobotOnMap[]
+  onAlertClick?: (alertId: string) => void
 }) {
   const segAlerts = alerts.filter((a) => a.segmentId === segment.id)
   const segRobots = robots.filter((r) => r.segmentId === segment.id)
@@ -148,7 +151,11 @@ export function SpatialInfoPanel({
           </div>
           <div className="space-y-2">
             {segAlerts.map((a) => (
-              <div key={a.id} className="flex items-center gap-3 rounded-xl border border-white/6 bg-white/[0.02] px-3 py-2">
+              <button
+                key={a.id}
+                onClick={() => onAlertClick?.(a.id)}
+                className="group flex w-full items-center gap-3 rounded-xl border border-white/6 bg-white/[0.02] px-3 py-2 text-left transition hover:border-cyan-400/25 hover:bg-cyan-400/[0.04]"
+              >
                 <AlertTriangle className={`h-3.5 w-3.5 shrink-0 ${
                   a.severity === 'critical' ? 'text-rose-400' : a.severity === 'warning' ? 'text-amber-400' : 'text-slate-400'
                 }`} />
@@ -156,8 +163,9 @@ export function SpatialInfoPanel({
                   <div className="text-sm text-white">{a.label}</div>
                   <div className="text-[10px] text-slate-500">位置 {(a.progress * 100).toFixed(0)}%</div>
                 </div>
+                <Crosshair className="h-3.5 w-3.5 shrink-0 text-slate-600 transition group-hover:text-cyan-400" />
                 <Badge tone={alertTone(a.severity)}>{a.severity}</Badge>
-              </div>
+              </button>
             ))}
           </div>
         </div>

@@ -77,6 +77,7 @@ export function PipelineMap({
   selectedRobot,
   onSelectSegment,
   onSelectRobot,
+  onDeselect,
 }: {
   nodes: PipeNode[]
   segments: PipeSegment[]
@@ -86,6 +87,7 @@ export function PipelineMap({
   selectedRobot: string | null
   onSelectSegment: (id: string) => void
   onSelectRobot: (id: string) => void
+  onDeselect: () => void
 }) {
   ensureStyles()
 
@@ -113,7 +115,13 @@ export function PipelineMap({
           <path d="M 48 0 L 0 0 0 48" fill="none" stroke="rgba(255,255,255,0.02)" strokeWidth="0.5" />
         </pattern>
       </defs>
-      <rect width={W} height={H} fill="url(#pm2-grid)" />
+      <rect
+        width={W}
+        height={H}
+        fill="url(#pm2-grid)"
+        onClick={onDeselect}
+        className="cursor-default"
+      />
 
       {/* ═══ Vertical connections (dashed) ═══ */}
       {vertLinks.map(({ from, to }, i) => {
@@ -146,7 +154,7 @@ export function PipelineMap({
         const trailEnd = segRobot ? segRobot.progress : 0
 
         return (
-          <g key={seg.id} className="cursor-pointer" onClick={() => onSelectSegment(seg.id)}>
+          <g key={seg.id} className="cursor-pointer" onClick={(e) => { e.stopPropagation(); onSelectSegment(seg.id) }}>
             {/* Selection glow */}
             {isSel && (
               <line x1={from.x} y1={from.y} x2={to.x} y2={to.y}
