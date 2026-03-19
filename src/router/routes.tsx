@@ -4,8 +4,8 @@ import { AlertsPage } from '@/pages/Alerts/AlertsPage'
 import { CommandPage } from '@/pages/Command/CommandPage'
 import { HistoryPage } from '@/pages/History/HistoryPage'
 import { HomeOverviewPage } from '@/pages/HomeOverview/HomeOverviewPage'
+import { ReportsPage } from '@/pages/Reports/ReportsPage'
 import { SpatialPage } from '@/pages/Spatial/SpatialPage'
-import { PlaceholderPage } from '@/pages/Placeholder/PlaceholderPage'
 
 export const router = createBrowserRouter([
   {
@@ -18,7 +18,7 @@ export const router = createBrowserRouter([
       { path: 'alerts', element: <AlertsPage /> },
       { path: 'spatial', element: <SpatialPage /> },
       { path: 'history', element: <HistoryPage /> },
-      { path: 'reports', element: <PlaceholderPage kind="reports" /> },
+      { path: 'reports', element: <ReportsPage /> },
     ],
   },
 ])

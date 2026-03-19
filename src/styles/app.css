@@ -125,3 +125,9 @@
   border: 2px solid transparent;
   background-clip: padding-box;
 }
+
+@keyframes progress {
+  0% { width: 0%; }
+  60% { width: 75%; }
+  100% { width: 100%; }
+}

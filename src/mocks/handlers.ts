@@ -3,6 +3,7 @@ import { createAlertsPageMock } from './data/alerts'
 import { createCommandCenterMock } from './data/commandCenter'
 import { createHomeOverviewMock } from './data/dashboardHome'
 import { createHistoryPageMock } from './data/history'
+import { createReportsPageMock } from './data/reports'
 import { createSpatialPageMock } from './data/spatial'
 
 export const handlers = [
@@ -31,5 +32,12 @@ export const handlers = [
     const days = Number(url.searchParams.get('days') ?? '30')
     await delay(250)
     return HttpResponse.json(createHistoryPageMock(days))
+  }),
+
+  http.get('/api/dashboard/reports', async ({ request }) => {
+    const url = new URL(request.url)
+    const days = Number(url.searchParams.get('days') ?? '30')
+    await delay(200)
+    return HttpResponse.json(createReportsPageMock(days))
   }),
 ]
