@@ -54,6 +54,141 @@ function trendIcon(trend: 'up' | 'down' | 'steady') {
   return <Minus className="h-3 w-3 text-slate-500" />
 }
 
+/* ───────── Capture Snapshot ───────── */
+
+/** Anomaly type → visual config for the simulated capture */
+function getAnomalyConfig(alert: AlertItem) {
+  const title = alert.title.toLowerCase()
+  if (title.includes('热像') || title.includes('温升') || title.includes('温度'))
+    return { type: 'thermal' as const, label: '热像异常区域', color: '#f43f5e', fillColors: ['rgba(255,50,20,0.8)', 'rgba(255,120,0,0.5)', 'rgba(255,180,0,0.15)'] }
+  if (title.includes('湿度') || title.includes('渗漏') || title.includes('积水'))
+    return { type: 'moisture' as const, label: '湿度异常区域', color: '#22d3ee', fillColors: ['rgba(34,211,238,0.6)', 'rgba(56,189,248,0.3)', 'rgba(34,211,238,0.08)'] }
+  if (title.includes('气体') || title.includes('ch'))
+    return { type: 'gas' as const, label: '气体浓度异常', color: '#a3e635', fillColors: ['rgba(163,230,53,0.5)', 'rgba(132,204,22,0.25)', 'rgba(163,230,53,0.05)'] }
+  if (title.includes('振动') || title.includes('结构') || title.includes('螺栓'))
+    return { type: 'structural' as const, label: '结构异常标注', color: '#f59e0b', fillColors: ['rgba(245,158,11,0.6)', 'rgba(252,211,77,0.3)', 'rgba(245,158,11,0.08)'] }
+  return { type: 'generic' as const, label: '异常区域', color: '#f43f5e', fillColors: ['rgba(244,63,94,0.5)', 'rgba(244,63,94,0.2)', 'rgba(244,63,94,0.05)'] }
+}
+
+/** Hash alert.id → deterministic position offset so each alert looks different */
+function idToOffset(id: string) {
+  let h = 0
+  for (let i = 0; i < id.length; i++) h = ((h << 5) - h + id.charCodeAt(i)) | 0
+  return { x: ((Math.abs(h) % 120) - 60), y: ((Math.abs(h >> 8) % 60) - 30) }
+}
+
+function CaptureSnapshot({ alert }: { alert: AlertItem }) {
+  const cfg = getAnomalyConfig(alert)
+  const off = idToOffset(alert.id)
+  const W = 480, H = 270
+
+  // Pick wall side and cable tray based on alert hash
+  const onRight = (Math.abs(off.x) % 2) === 0
+  const trayIndex = Math.abs(off.y) % 3  // 0=upper, 1=mid, 2=lower
+  const trayNearY = [90, 135, 180][trayIndex]
+  const depth = 0.3 + (Math.abs(off.x) % 40) / 100  // 0.3 ~ 0.7 depth
+
+  // Wall geometry: near edge → far edge
+  const wallNearX = onRight ? 480 : 0
+  const wallFarX  = onRight ? 320 : 160
+  const farY = 70 + (trayNearY / 270) * 130
+
+  // Interpolate position at depth on the wall
+  const cx = wallNearX + (wallFarX - wallNearX) * depth
+  const cy = trayNearY + (farY - trayNearY) * depth
+  const scale = 1 - depth * 0.4  // perspective shrink
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ aspectRatio: '16/9' }}>
+      {/* Background */}
+      <rect width={W} height={H} fill="#070f19" />
+
+      {/* Tunnel structure — simplified perspective */}
+      <polygon points="0,0 160,70 160,200 0,270" fill="#111d2a" />
+      <polygon points="480,0 320,70 320,200 480,270" fill="#101b27" />
+      <polygon points="0,0 480,0 320,70 160,70" fill="#0c1720" />
+      <polygon points="0,270 480,270 320,200 160,200" fill="#0e1922" />
+      <rect x="160" y="70" width="160" height="130" fill="#0a151f" />
+
+      {/* Perspective lines */}
+      <line x1="0" y1="0" x2="160" y2="70" stroke="rgba(100,130,155,0.18)" strokeWidth="1" />
+      <line x1="480" y1="0" x2="320" y2="70" stroke="rgba(100,130,155,0.18)" strokeWidth="1" />
+      <line x1="0" y1="270" x2="160" y2="200" stroke="rgba(80,110,135,0.22)" strokeWidth="1.5" />
+      <line x1="480" y1="270" x2="320" y2="200" stroke="rgba(80,110,135,0.22)" strokeWidth="1.5" />
+
+      {/* Cable trays — left */}
+      {[90, 135, 180].map((nearY, i) => (
+        <line key={`lt-${i}`} x1="0" y1={nearY} x2="160" y2={70 + (nearY / 270) * 130} stroke="rgba(100,130,155,0.15)" strokeWidth={2.5 - i * 0.5} />
+      ))}
+      {/* Cable trays — right */}
+      {[90, 135, 180].map((nearY, i) => (
+        <line key={`rt-${i}`} x1="480" y1={nearY} x2="320" y2={70 + (nearY / 270) * 130} stroke="rgba(100,130,155,0.15)" strokeWidth={2.5 - i * 0.5} />
+      ))}
+
+      {/* Headlight glow */}
+      <ellipse cx="240" cy="240" rx="200" ry="80" fill="rgba(140,180,210,0.06)" />
+
+      {/* ── Anomaly visualization ── */}
+      <defs>
+        <radialGradient id={`snap-anom-${alert.id}`} cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stopColor={cfg.fillColors[0]} />
+          <stop offset="45%" stopColor={cfg.fillColors[1]} />
+          <stop offset="100%" stopColor={cfg.fillColors[2]} />
+        </radialGradient>
+      </defs>
+
+      {/* Anomaly glow on wall */}
+      <ellipse cx={cx} cy={cy} rx={45 * scale} ry={28 * scale} fill={`url(#snap-anom-${alert.id})`} />
+
+      {/* Cable fault recolor at anomaly (3 cables along the wall) */}
+      {cfg.type === 'thermal' && [-6, 0, 6].map((dy, i) => {
+        const len = 40 * scale
+        const x1 = wallNearX + (wallFarX - wallNearX) * (depth - 0.12)
+        const y1base = trayNearY + dy + (farY + dy * 0.3 - trayNearY - dy) * (depth - 0.12)
+        const x2 = wallNearX + (wallFarX - wallNearX) * (depth + 0.12)
+        const y2base = trayNearY + dy + (farY + dy * 0.3 - trayNearY - dy) * (depth + 0.12)
+        return (
+          <line key={`fc-${i}`}
+            x1={x1} y1={y1base} x2={x2} y2={y2base}
+            stroke={cfg.fillColors[i] ?? cfg.fillColors[0]}
+            strokeWidth={3 * scale} strokeLinecap="round" />
+        )
+      })}
+
+      {/* Moisture: drip streaks down the wall */}
+      {cfg.type === 'moisture' && [-12, 0, 12].map((dx, i) => (
+        <line key={`drip-${i}`}
+          x1={cx + dx * scale} y1={cy - 10 * scale}
+          x2={cx + dx * scale + 2} y2={cy + 22 * scale + i * 5}
+          stroke={cfg.fillColors[0]} strokeWidth={1.5 * scale} strokeLinecap="round" opacity={0.7 - i * 0.15} />
+      ))}
+
+      {/* Detection box */}
+      <rect x={cx - 42 * scale} y={cy - 24 * scale} width={84 * scale} height={48 * scale} rx="3"
+        fill="none" stroke={cfg.color} strokeWidth="1.5" strokeDasharray="4,3" opacity="0.7" />
+
+      {/* Label */}
+      <rect x={cx - 42 * scale} y={cy - 24 * scale - 13} width={cfg.label.length * 7 + 10} height="12" rx="2" fill="rgba(0,0,0,0.65)" />
+      <text x={cx - 38 * scale} y={cy - 24 * scale - 4} fill={cfg.color} fontSize="8" fontWeight="600" fontFamily="sans-serif">
+        {cfg.label}
+      </text>
+
+      {/* Timestamp bar */}
+      <rect x="8" y={H - 22} width="170" height="16" rx="3" fill="rgba(0,0,0,0.6)" />
+      <text x="14" y={H - 10} fill="#94a3b8" fontSize="9" fontFamily="sans-serif">
+        {new Date(alert.occurredAt).toLocaleString('zh-CN')} · {alert.segmentId}
+      </text>
+
+      {/* Camera info */}
+      <rect x={W - 78} y="8" width="70" height="14" rx="2" fill="rgba(0,0,0,0.5)" />
+      <text x={W - 72} y="18" fill="#64748b" fontSize="8" fontFamily="sans-serif">Front Camera</text>
+
+      {/* Scanline hint */}
+      <line x1="0" y1={110 + off.y * 0.5} x2={W} y2={110 + off.y * 0.5} stroke="rgba(100,200,255,0.06)" strokeWidth="1" />
+    </svg>
+  )
+}
+
 /* ───────── Main component ───────── */
 
 export function AlertDetail({
@@ -116,26 +251,9 @@ export function AlertDetail({
           <Camera className="h-3.5 w-3.5" />
           抓拍证据
         </div>
-        {/* 模拟摄像头抓拍画面 */}
-        <div className="relative aspect-video overflow-hidden rounded-xl border border-white/8 bg-[#060e18]">
-          {/* 模拟隧道截图 — 用渐变+色块表示 */}
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_60%_50%_at_50%_40%,rgba(20,30,45,1),rgba(6,14,24,1))]" />
-          {/* 隧道轮廓 */}
-          <div className="absolute inset-[15%] rounded-[50%] border border-white/[0.06] bg-[radial-gradient(circle_at_50%_30%,rgba(40,55,75,0.4),transparent_60%)]" />
-          {/* 模拟标注框 */}
-          <div className="absolute right-[18%] top-[20%] h-[30%] w-[25%] rounded-lg border border-rose-400/50">
-            <div className="absolute -top-5 left-0 whitespace-nowrap text-[10px] text-rose-300">
-              异常区域标注
-            </div>
-          </div>
-          {/* 时间戳 overlay */}
-          <div className="absolute bottom-2 left-2 rounded bg-black/60 px-2 py-0.5 text-[10px] text-slate-300">
-            {new Date(alert.occurredAt).toLocaleString('zh-CN')} · {alert.segmentId}
-          </div>
-          {/* 伪彩色热像 overlay */}
-          {alert.severity === 'critical' && (
-            <div className="absolute right-[20%] top-[25%] h-[20%] w-[18%] rounded-full bg-[radial-gradient(circle,rgba(255,60,30,0.35),rgba(255,140,0,0.15),transparent)]" />
-          )}
+        {/* 模拟隧道抓拍 — SVG 生成，根据告警类型动态变化 */}
+        <div className="relative overflow-hidden rounded-xl border border-white/8 bg-[#060e18]">
+          <CaptureSnapshot alert={alert} />
         </div>
       </div>
 

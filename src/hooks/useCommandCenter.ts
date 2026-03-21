@@ -7,19 +7,16 @@ interface State {
   error: string | null
 }
 
-export function useCommandCenter() {
-  const [state, setState] = useState<State>({
-    data: null,
-    loading: true,
-    error: null,
-  })
+export function useCommandCenter(robotId = 'R1') {
+  const [state, setState] = useState<State>({ data: null, loading: true, error: null })
 
   useEffect(() => {
     let active = true
+    setState((s) => ({ ...s, loading: true }))
 
     async function run() {
       try {
-        const res = await fetch('/api/dashboard/command')
+        const res = await fetch(`/api/dashboard/command?robotId=${robotId}`)
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         const data = (await res.json()) as CommandCenterResponse
         if (active) setState({ data, loading: false, error: null })
@@ -35,11 +32,8 @@ export function useCommandCenter() {
     }
 
     void run()
-
-    return () => {
-      active = false
-    }
-  }, [])
+    return () => { active = false }
+  }, [robotId])
 
   return state
 }

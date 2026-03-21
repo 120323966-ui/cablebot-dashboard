@@ -1,11 +1,18 @@
+/* ═══════════════════════════════════════════════════
+   Dashboard Home Mock — derives from sharedSeed
+   ═══════════════════════════════════════════════════ */
+
 import type { AlertItem, HomeOverviewResponse, TrendPoint } from '@/types/dashboard'
+import { SEGMENT_LABELS, BASE_RISK } from './constants'
+import {
+  getActiveAlerts, getRobots, getKpis, getSegmentRisks,
+  createRealtimeAlert as sharedRealtimeAlert,
+} from './sharedSeed'
+
+/* ── Trend helpers (chart-specific, not shared) ── */
 
 const TREND_POINTS = 12
 const TREND_STEP_MINUTES = 10
-
-function isoMinutesAgo(minutes: number) {
-  return new Date(Date.now() - minutes * 60_000).toISOString()
-}
 
 function alignToStep(date: Date, stepMinutes: number) {
   const aligned = new Date(date)
@@ -17,11 +24,9 @@ function alignToStep(date: Date, stepMinutes: number) {
 
 function buildTrend(base: number, wobble: number): TrendPoint[] {
   const end = alignToStep(new Date(), TREND_STEP_MINUTES)
-
   return Array.from({ length: TREND_POINTS }, (_, idx) => {
     const pointTime = new Date(end)
     pointTime.setMinutes(end.getMinutes() - (TREND_POINTS - 1 - idx) * TREND_STEP_MINUTES)
-
     return {
       time: pointTime.toISOString(),
       value: Number((base + Math.sin(idx / 2) * wobble + (idx % 3) * 0.9).toFixed(1)),
@@ -29,7 +34,48 @@ function buildTrend(base: number, wobble: number): TrendPoint[] {
   })
 }
 
+/* ── Heatmap: derive cell risks from BASE_RISK with per-row variance ── */
+
+function buildHeatmap() {
+  const rows = ['北侧', '中段', '南侧']
+  const columns = ['A1', 'A2', 'B1', 'B2', 'B3', 'C1', 'C2', 'C3']
+  const rowMul = [1.08, 0.95, 0.82]
+  const offsets = [0.02, 0, 0.04, -0.01, 0.09, 0.04, -0.07, 0.04] // per-segment fine-tuning
+
+  const cells = columns.flatMap((seg, ci) => {
+    const base = BASE_RISK[seg]
+    return rows.map((_, ri) => {
+      const risk = Math.min(1, Math.max(0, Number((base * rowMul[ri] + offsets[ci] * (ri === 0 ? 1 : ri === 1 ? 0.5 : 0)).toFixed(2))))
+      let label: string, kind: string, trend: 'up' | 'down' | 'steady'
+
+      if (risk >= 0.8) { label = '热像复核'; kind = 'temperature'; trend = 'up' }
+      else if (risk >= 0.65) { label = '潮湿异常'; kind = 'humidity'; trend = 'up' }
+      else if (risk >= 0.5) { label = '持续观察'; kind = 'review'; trend = 'up' }
+      else if (risk >= 0.35) { label = '轻度波动'; kind = 'normal'; trend = 'up' }
+      else if (risk >= 0.2) { label = '状态平稳'; kind = 'normal'; trend = 'steady' }
+      else { label = '状态平稳'; kind = 'normal'; trend = 'steady' }
+
+      return { x: ci, y: ri, risk, label, kind, trend }
+    })
+  })
+
+  return { columns, rows, cells }
+}
+
+/* ═══════════════════════════════════════════════════
+   Public API
+   ═══════════════════════════════════════════════════ */
+
 export function createHomeOverviewMock(): HomeOverviewResponse {
+  const activeAlerts = getActiveAlerts()
+  const robots = getRobots()
+  const kpis = getKpis()
+
+  // Map ActiveAlert → AlertItem (drop type & progress)
+  const alertItems: AlertItem[] = activeAlerts
+    .sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime())
+    .map(({ type, progress, ...rest }) => rest)
+
   return {
     meta: {
       stationName: '地下电缆排管 · 监控中心',
@@ -40,10 +86,10 @@ export function createHomeOverviewMock(): HomeOverviewResponse {
       network: { status: 'ok', latencyMs: 36 },
     },
     kpis: [
-      { id: 'tasks', label: '今日计划任务', value: 6, unit: '项', deltaPct: 20, tone: 'neutral', hint: '其中 2 项为重点区段复核' },
-      { id: 'online', label: '在线机器人', value: 3, unit: '台', deltaPct: 0, tone: 'good', hint: '全设备健康可用' },
-      { id: 'alerts', label: '待处置告警', value: 4, unit: '条', deltaPct: 33, tone: 'warning', hint: '1 条需 10 分钟内确认' },
-      { id: 'risk', label: '高风险区段', value: 2, unit: '段', deltaPct: -25, tone: 'danger', hint: 'B3、C2 风险仍需盯防' },
+      { id: 'tasks', label: '今日计划任务', value: kpis.taskCount, unit: '项', deltaPct: 20, tone: 'neutral' },
+      { id: 'online', label: '在线机器人', value: kpis.onlineRobots, unit: '台', deltaPct: 0, tone: 'good' },
+      { id: 'alerts', label: '待处置告警', value: kpis.pendingAlertCount, unit: '条', deltaPct: 33, tone: 'warning' },
+      { id: 'risk', label: '高风险区段', value: kpis.highRiskSegCount, unit: '段', deltaPct: -25, tone: 'danger' },
     ],
     activeTask: {
       taskId: 'TK-2026-0315-0021',
@@ -56,46 +102,18 @@ export function createHomeOverviewMock(): HomeOverviewResponse {
       checksCompleted: 8,
       checksTotal: 19,
     },
-    robots: [
-      { id: 'R1', name: 'PipeBot-01', health: 'good', batteryPct: 78, signalRssi: -58, location: 'B3-西入口', speedKmh: 1.2, temperatureC: 27.4 },
-      { id: 'R2', name: 'PipeBot-02', health: 'warning', batteryPct: 49, signalRssi: -66, location: 'C2-阀井段', speedKmh: 0.8, temperatureC: 31.2 },
-      { id: 'R3', name: 'PipeBot-03', health: 'neutral', batteryPct: 91, signalRssi: -52, location: '待命区', speedKmh: 0, temperatureC: 25.1 },
-    ],
-    alerts: [
-      { id: 'AL-301', title: 'B3 段热像异常偏高', severity: 'critical', status: 'new', segmentId: 'B3', occurredAt: isoMinutesAgo(4), evidence: '热像峰值 71.2°C', value: '高于阈值 +9.3°C' },
-      { id: 'AL-302', title: 'C2 段湿度突增', severity: 'warning', status: 'acknowledged', segmentId: 'C2', occurredAt: isoMinutesAgo(12), evidence: '湿度 86%', value: '较均值 +18%' },
-      { id: 'AL-303', title: 'R2 通信质量下降', severity: 'info', status: 'new', segmentId: 'C2', occurredAt: isoMinutesAgo(18), evidence: 'RSSI -66dBm', value: '建议切换中继' },
-    ],
-    risk: {
-      columns: ['A1', 'A2', 'B1', 'B2', 'B3', 'C1', 'C2', 'C3'],
-      rows: ['北侧', '中段', '南侧'],
-      cells: [
-        { x: 0, y: 0, risk: 0.2, label: '状态平稳', kind: 'normal', trend: 'steady' },
-        { x: 1, y: 0, risk: 0.28, label: '轻度波动', kind: 'normal', trend: 'up' },
-        { x: 2, y: 0, risk: 0.36, label: '温升抬头', kind: 'temperature', trend: 'up' },
-        { x: 3, y: 0, risk: 0.44, label: '持续观察', kind: 'review', trend: 'steady' },
-        { x: 4, y: 0, risk: 0.91, label: '热像复核', kind: 'temperature', trend: 'up' },
-        { x: 5, y: 0, risk: 0.42, label: '局部回潮', kind: 'humidity', trend: 'up' },
-        { x: 6, y: 0, risk: 0.55, label: '积水抬升', kind: 'water', trend: 'up' },
-        { x: 7, y: 0, risk: 0.34, label: '状态平稳', kind: 'normal', trend: 'steady' },
-        { x: 0, y: 1, risk: 0.18, label: '状态平稳', kind: 'normal', trend: 'steady' },
-        { x: 1, y: 1, risk: 0.23, label: '状态平稳', kind: 'normal', trend: 'steady' },
-        { x: 2, y: 1, risk: 0.29, label: '轻度波动', kind: 'normal', trend: 'up' },
-        { x: 3, y: 1, risk: 0.41, label: '待人工看护', kind: 'review', trend: 'up' },
-        { x: 4, y: 1, risk: 0.77, label: '高温回落', kind: 'temperature', trend: 'down' },
-        { x: 5, y: 1, risk: 0.39, label: '状态平稳', kind: 'normal', trend: 'steady' },
-        { x: 6, y: 1, risk: 0.82, label: '潮湿异常', kind: 'humidity', trend: 'up' },
-        { x: 7, y: 1, risk: 0.31, label: '状态平稳', kind: 'normal', trend: 'steady' },
-        { x: 0, y: 2, risk: 0.12, label: '状态平稳', kind: 'normal', trend: 'steady' },
-        { x: 1, y: 2, risk: 0.2, label: '状态平稳', kind: 'normal', trend: 'steady' },
-        { x: 2, y: 2, risk: 0.27, label: '轻度波动', kind: 'normal', trend: 'steady' },
-        { x: 3, y: 2, risk: 0.33, label: '状态平稳', kind: 'normal', trend: 'steady' },
-        { x: 4, y: 2, risk: 0.58, label: '待复核', kind: 'review', trend: 'steady' },
-        { x: 5, y: 2, risk: 0.31, label: '状态平稳', kind: 'normal', trend: 'steady' },
-        { x: 6, y: 2, risk: 0.63, label: '湿度偏高', kind: 'humidity', trend: 'up' },
-        { x: 7, y: 2, risk: 0.26, label: '状态平稳', kind: 'normal', trend: 'steady' },
-      ],
-    },
+    robots: robots.map((r) => ({
+      id: r.id,
+      name: r.name,
+      health: r.status === 'idle' ? 'neutral' as const : r.batteryPct < 50 ? 'warning' as const : 'good' as const,
+      batteryPct: r.batteryPct,
+      signalRssi: r.signalRssi,
+      location: SEGMENT_LABELS[r.segmentId] ?? r.segmentId,
+      speedKmh: r.speedKmh,
+      temperatureC: r.temperatureC,
+    })),
+    alerts: alertItems,
+    risk: buildHeatmap(),
     trends: [
       { id: 'temp', label: '管道温度', unit: '°C', threshold: 65, points: buildTrend(56, 6) },
       { id: 'humidity', label: '环境湿度', unit: '%', threshold: 80, points: buildTrend(68, 8) },
@@ -109,15 +127,8 @@ export function createHomeOverviewMock(): HomeOverviewResponse {
   }
 }
 
+/** Realtime alert for Home page — delegates to shared generator */
 export function createRealtimeAlert(): AlertItem {
-  return {
-    id: `AL-${Math.floor(Math.random() * 900 + 100)}`,
-    title: 'B3 段温度波动增强',
-    severity: Math.random() > 0.55 ? 'critical' : 'warning',
-    status: 'new',
-    segmentId: 'B3',
-    occurredAt: new Date().toISOString(),
-    evidence: `峰值 ${(67 + Math.random() * 6).toFixed(1)}°C`,
-    value: '建议人工复核热像窗口',
-  }
+  const { type, progress, ...rest } = sharedRealtimeAlert()
+  return rest
 }

@@ -58,6 +58,9 @@ export interface VideoTarget {
   left: string
   width: string
   height: string
+  /** Fault anchor point (% of video area) for leader line */
+  faultX?: string
+  faultY?: string
 }
 
 export interface PrimaryVideoFeed {

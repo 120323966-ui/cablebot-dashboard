@@ -10,47 +10,75 @@ import type {
 function targetStyles(severity: VideoTarget['severity']) {
   if (severity === 'critical') {
     return {
-      border: 'border-rose-400/80',
-      glow: 'shadow-[0_0_0_1px_rgba(251,113,133,0.25),0_0_20px_rgba(244,63,94,0.1)]',
-      chip: 'border-rose-400/25 bg-rose-500/12 text-rose-100',
+      border: 'border-2 border-rose-500',
+      fill: 'bg-rose-500/15',
+      glow: 'shadow-[0_0_0_2px_rgba(244,63,94,0.35),0_0_24px_4px_rgba(244,63,94,0.25),0_0_48px_8px_rgba(244,63,94,0.1)]',
+      chip: 'border-rose-400/40 bg-rose-500/30 text-white font-bold',
+      pulse: 'animate-[pulse_1.5s_ease-in-out_infinite]',
+      corner: 'border-rose-400',
     }
   }
   if (severity === 'warning') {
     return {
-      border: 'border-amber-300/80',
-      glow: 'shadow-[0_0_0_1px_rgba(253,224,71,0.18),0_0_16px_rgba(245,158,11,0.06)]',
-      chip: 'border-amber-300/20 bg-amber-400/10 text-amber-100',
+      border: 'border-2 border-amber-400',
+      fill: 'bg-amber-400/12',
+      glow: 'shadow-[0_0_0_2px_rgba(245,158,11,0.3),0_0_20px_4px_rgba(245,158,11,0.2)]',
+      chip: 'border-amber-400/35 bg-amber-500/25 text-amber-50 font-bold',
+      pulse: '',
+      corner: 'border-amber-400',
     }
   }
   return {
-    border: 'border-cyan-300/70',
-    glow: 'shadow-[0_0_0_1px_rgba(34,211,238,0.18)]',
-    chip: 'border-cyan-300/20 bg-cyan-400/10 text-cyan-100',
+    border: 'border-2 border-cyan-400',
+    fill: 'bg-cyan-400/10',
+    glow: 'shadow-[0_0_0_1px_rgba(34,211,238,0.25),0_0_16px_rgba(34,211,238,0.15)]',
+    chip: 'border-cyan-400/25 bg-cyan-500/20 text-cyan-50 font-medium',
+    pulse: '',
+    corner: 'border-cyan-400',
   }
+}
+
+/** Corner brackets for industrial detection-box look */
+function CornerBrackets({ color }: { color: string }) {
+  const base = `absolute w-3.5 h-3.5 ${color}`
+  return (
+    <>
+      <span className={`${base} left-0 top-0 border-l-2 border-t-2 rounded-tl`} />
+      <span className={`${base} right-0 top-0 border-r-2 border-t-2 rounded-tr`} />
+      <span className={`${base} left-0 bottom-0 border-l-2 border-b-2 rounded-bl`} />
+      <span className={`${base} right-0 bottom-0 border-r-2 border-b-2 rounded-br`} />
+    </>
+  )
 }
 
 export function CenterVideoStage({
   video,
   mission,
   control,
+  activeAux,
 }: {
   video: PrimaryVideoFeed
   mission: CommandMission
   control: ControlState
+  activeAux?: Set<string>
 }) {
   return (
     <section className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-white/8 bg-slate-950/60">
       {/* Full video area */}
       <div className="relative min-h-0 flex-1 overflow-hidden bg-[#040d18]">
         {/* Simulated tunnel camera feed */}
-        <TunnelSimulation lightOn={control.lightOn} stabilizationOn={control.stabilizationOn} />
+        <TunnelSimulation lightOn={control.lightOn} stabilizationOn={control.stabilizationOn} segmentId={mission.segmentId} />
 
-        {/* Crosshair */}
-        <div className="pointer-events-none absolute left-1/2 top-1/2 z-10 h-14 w-14 -translate-x-1/2 -translate-y-1/2 rounded-full border border-cyan-300/20">
-          <div className="absolute left-1/2 top-1/2 h-8 w-8 -translate-x-1/2 -translate-y-1/2 rounded-full border border-cyan-300/30" />
-          <div className="absolute left-1/2 top-1/2 h-[1px] w-10 -translate-x-1/2 -translate-y-1/2 bg-cyan-300/35" />
-          <div className="absolute left-1/2 top-1/2 h-10 w-[1px] -translate-x-1/2 -translate-y-1/2 bg-cyan-300/35" />
-        </div>
+        {/* Crosshair — minimal camera reticle */}
+        <svg className="pointer-events-none absolute left-1/2 top-1/2 z-10 h-6 w-6 -translate-x-1/2 -translate-y-1/2" viewBox="0 0 24 24">
+          {/* Four short lines with center gap */}
+          <line x1="0" y1="12" x2="8" y2="12" stroke="rgba(165,243,252,0.45)" strokeWidth="1" />
+          <line x1="16" y1="12" x2="24" y2="12" stroke="rgba(165,243,252,0.45)" strokeWidth="1" />
+          <line x1="12" y1="0" x2="12" y2="8" stroke="rgba(165,243,252,0.45)" strokeWidth="1" />
+          <line x1="12" y1="16" x2="12" y2="24" stroke="rgba(165,243,252,0.45)" strokeWidth="1" />
+          {/* Center dot */}
+          <circle cx="12" cy="12" r="1" fill="rgba(165,243,252,0.5)" />
+        </svg>
 
         {/* Top-left: camera + resolution badge (minimal) */}
         <div className="absolute left-3 top-3 z-20 flex items-center gap-1.5">
@@ -107,7 +135,7 @@ export function CenterVideoStage({
           return (
             <div
               key={target.id}
-              className={`absolute rounded-2xl border bg-white/[0.02] ${styles.border} ${styles.glow}`}
+              className={`absolute rounded-lg ${styles.border} ${styles.fill} ${styles.glow} ${styles.pulse}`}
               style={{
                 top: target.top,
                 left: target.left,
@@ -115,20 +143,79 @@ export function CenterVideoStage({
                 height: target.height,
               }}
             >
-              <div className="absolute inset-x-2 top-2 flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="text-[11px] font-semibold text-white">{target.label}</div>
-                  <div className="mt-0.5 max-w-[140px] text-[10px] leading-4 text-slate-300">
-                    {target.detail}
-                  </div>
+              {/* Corner brackets */}
+              <CornerBrackets color={styles.corner} />
+
+              {/* Label — compact vertical layout */}
+              <div className="absolute inset-x-3 inset-y-2 flex flex-col justify-center gap-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-[13px] font-bold leading-tight text-white">{target.label}</span>
+                  <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wider leading-none ${styles.chip}`}>
+                    {target.severity}
+                  </span>
                 </div>
-                <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-medium ${styles.chip}`}>
-                  {target.severity}
-                </span>
+                <div className="text-[12px] leading-snug text-slate-300">{target.detail}</div>
               </div>
             </div>
           )
         })}
+
+        {/* PiP: Rear View */}
+        {activeAux?.has('rear') && (
+          <div className="absolute bottom-10 left-3 z-20 h-[120px] w-[180px] overflow-hidden rounded-lg border border-white/15 bg-[#060e16] shadow-xl">
+            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(30,50,70,0.4),rgba(6,14,22,1)_80%)]" />
+            {/* Simulated rear camera - reversed perspective lines */}
+            <svg viewBox="0 0 180 120" className="absolute inset-0 h-full w-full">
+              <line x1="0" y1="120" x2="70" y2="50" stroke="rgba(100,130,155,0.2)" strokeWidth="1" />
+              <line x1="180" y1="120" x2="110" y2="50" stroke="rgba(100,130,155,0.2)" strokeWidth="1" />
+              <line x1="0" y1="0" x2="70" y2="50" stroke="rgba(100,130,155,0.15)" strokeWidth="1" />
+              <line x1="180" y1="0" x2="110" y2="50" stroke="rgba(100,130,155,0.15)" strokeWidth="1" />
+              <rect x="70" y="40" width="40" height="20" fill="rgba(15,25,35,0.8)" stroke="rgba(100,130,155,0.15)" strokeWidth="0.5" />
+              {/* Floor tracks */}
+              <line x1="75" y1="120" x2="82" y2="60" stroke="rgba(80,110,135,0.2)" strokeWidth="1.5" />
+              <line x1="105" y1="120" x2="98" y2="60" stroke="rgba(80,110,135,0.2)" strokeWidth="1.5" />
+            </svg>
+            <div className="absolute left-2 top-1.5 rounded bg-slate-950/70 px-1.5 py-0.5 text-[9px] text-slate-300">
+              Rear Camera
+            </div>
+            <div className="absolute bottom-1.5 right-2 rounded bg-emerald-500/15 px-1.5 py-0.5 text-[9px] text-emerald-300">
+              LIVE
+            </div>
+          </div>
+        )}
+
+        {/* PiP: Zoom Detail */}
+        {activeAux?.has('zoom') && (
+          <div className="absolute bottom-10 right-3 z-20 h-[120px] w-[180px] overflow-hidden rounded-lg border border-white/15 bg-[#060e16] shadow-xl">
+            {/* Zoomed-in cable detail */}
+            <svg viewBox="0 0 180 120" className="absolute inset-0 h-full w-full">
+              <rect x="0" y="0" width="180" height="120" fill="#0a1520" />
+              {/* Cable tray bracket */}
+              <rect x="10" y="35" width="160" height="6" fill="rgba(100,130,150,0.25)" rx="1" />
+              <rect x="10" y="75" width="160" height="6" fill="rgba(100,130,150,0.25)" rx="1" />
+              {/* Cables */}
+              <line x1="10" y1="48" x2="170" y2="48" stroke="#2a3a48" strokeWidth="5" strokeLinecap="round" />
+              <line x1="10" y1="57" x2="170" y2="57" stroke="#1e2e3c" strokeWidth="5" strokeLinecap="round" />
+              <line x1="10" y1="66" x2="170" y2="66" stroke="#3a2828" strokeWidth="5" strokeLinecap="round" />
+              {/* Fault highlight on cables */}
+              <line x1="70" y1="48" x2="120" y2="48" stroke="rgba(255,50,20,0.85)" strokeWidth="5" strokeLinecap="round" />
+              <line x1="70" y1="57" x2="120" y2="57" stroke="rgba(255,90,10,0.75)" strokeWidth="5" strokeLinecap="round" />
+              <line x1="70" y1="66" x2="120" y2="66" stroke="rgba(255,130,30,0.65)" strokeWidth="5" strokeLinecap="round" />
+              {/* Cable joint mark */}
+              <rect x="90" y="44" width="4" height="26" fill="rgba(200,200,200,0.3)" rx="1" />
+              {/* Bracket supports */}
+              <rect x="30" y="32" width="4" height="50" fill="rgba(90,115,140,0.25)" rx="1" />
+              <rect x="145" y="32" width="4" height="50" fill="rgba(90,115,140,0.25)" rx="1" />
+            </svg>
+            <div className="absolute left-2 top-1.5 rounded bg-slate-950/70 px-1.5 py-0.5 text-[9px] text-slate-300">
+              Zoom × 4.0
+            </div>
+            <div className="absolute bottom-1.5 right-2 rounded bg-amber-500/15 px-1.5 py-0.5 text-[9px] text-amber-300">
+              故障区域
+            </div>
+          </div>
+        )}
+
       </div>
 
       {/* Bottom bar: PTZ status (compact, inside video card) */}

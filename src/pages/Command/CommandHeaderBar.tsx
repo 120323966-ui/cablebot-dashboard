@@ -1,4 +1,4 @@
-import { BatteryCharging, Gauge, ShieldCheck, Timer, Wifi } from 'lucide-react'
+import { BatteryCharging, Bot, ChevronDown, Gauge, ShieldCheck, Timer, Wifi } from 'lucide-react'
 import { Badge } from '@/components/ui/Badge'
 import type { CommandMeta, CommandMission, CommandRobotState } from '@/types/command'
 
@@ -39,18 +39,49 @@ function Stat({
   )
 }
 
+/** Robot options for the switcher */
+const ROBOT_OPTIONS = [
+  { id: 'R1', name: 'PipeBot-01' },
+  { id: 'R2', name: 'PipeBot-02' },
+  { id: 'R3', name: 'PipeBot-03' },
+]
+
 export function CommandHeaderBar({
   meta,
   mission,
   robot,
+  activeRobotId,
+  onSwitchRobot,
 }: {
   meta: CommandMeta
   mission: CommandMission
   robot: CommandRobotState
+  activeRobotId: string
+  onSwitchRobot: (robotId: string) => void
 }) {
   return (
     <section className="flex shrink-0 items-center gap-3 rounded-2xl border border-white/8 bg-slate-950/50 px-4 py-2.5 backdrop-blur-xl">
-      {/* Left: mission status */}
+      {/* Left: Robot switcher */}
+      <div className="relative">
+        <select
+          value={activeRobotId}
+          onChange={(e) => onSwitchRobot(e.target.value)}
+          className="appearance-none rounded-xl border border-cyan-400/20 bg-cyan-400/8 py-1.5 pl-8 pr-7 text-sm font-medium text-cyan-200 outline-none transition hover:bg-cyan-400/15 focus:border-cyan-400/40"
+        >
+          {ROBOT_OPTIONS.map((r) => (
+            <option key={r.id} value={r.id} className="bg-slate-900 text-white">
+              {r.name}
+            </option>
+          ))}
+        </select>
+        <Bot className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-cyan-400" />
+        <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 text-cyan-400/60" />
+      </div>
+
+      {/* Divider */}
+      <div className="h-5 w-px bg-white/10" />
+
+      {/* Mission status badges */}
       <div className="flex items-center gap-2">
         <Badge tone={missionTone(mission.status)}>
           {missionLabel(mission.status)}

@@ -160,9 +160,12 @@ export function useRealtimeCommandCenter(
     }, 5000)
 
     const eventTimer = window.setInterval(() => {
+      const current = dataRef.current
+      if (!current) return
+      // Pass current segment so events match the active robot's location
       onMessage({
         type: 'EVENT_NEW',
-        payload: createRealtimeCommandEvent(),
+        payload: createRealtimeCommandEvent(current.mission.segmentId),
       })
     }, 12000)
 

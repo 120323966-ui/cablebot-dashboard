@@ -16,6 +16,7 @@ import { useEffect, useRef } from 'react'
 interface TunnelSimulationProps {
   lightOn: boolean
   stabilizationOn: boolean
+  segmentId?: string
 }
 
 /* ------------------------------------------------------------------ */
@@ -47,8 +48,8 @@ function ensureStyles() {
       50%      { opacity: 0.85; }
     }
     @keyframes tun-thermal-pulse {
-      0%, 100% { opacity: 0.35; }
-      50%      { opacity: 0.55; }
+      0%, 100% { opacity: 0.85; }
+      50%      { opacity: 1; }
     }
     @keyframes tun-cam-shake {
       0%   { transform: translate(0, 0) rotate(0deg); }
@@ -138,7 +139,7 @@ function perspLine(nearX: number, nearY: number, farX: number, farY: number) {
 /* ------------------------------------------------------------------ */
 /*  Main Component                                                     */
 /* ------------------------------------------------------------------ */
-export function TunnelSimulation({ lightOn, stabilizationOn }: TunnelSimulationProps) {
+export function TunnelSimulation({ lightOn, stabilizationOn, segmentId = 'B3' }: TunnelSimulationProps) {
   useEffect(() => { ensureStyles() }, [])
 
   return (
@@ -180,19 +181,7 @@ export function TunnelSimulation({ lightOn, stabilizationOn }: TunnelSimulationP
             <stop offset="100%" stopColor="rgba(20,45,65,0.3)" />
           </linearGradient>
 
-          {/* Thermal hotspot gradient */}
-          <radialGradient id="tun-thermal-hot" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="rgba(255,60,30,0.5)" />
-            <stop offset="30%" stopColor="rgba(255,140,0,0.35)" />
-            <stop offset="60%" stopColor="rgba(255,200,0,0.15)" />
-            <stop offset="100%" stopColor="rgba(255,200,0,0)" />
-          </radialGradient>
-
-          <radialGradient id="tun-thermal-warm" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="rgba(255,180,0,0.3)" />
-            <stop offset="50%" stopColor="rgba(200,140,30,0.12)" />
-            <stop offset="100%" stopColor="rgba(150,100,20,0)" />
-          </radialGradient>
+          {/* (thermal gradients removed — fault shown via cable recolor only) */}
         </defs>
 
         {/* ---- Tunnel walls ---- */}
@@ -299,22 +288,55 @@ export function TunnelSimulation({ lightOn, stabilizationOn }: TunnelSimulationP
         {/* ---- Floor wetness overlay ---- */}
         <polygon points={`${NL},${NB} ${NR},${NB} ${FR},${FB} ${FL},${FB}`} fill="url(#tun-floor-wet)" opacity={0.6} />
 
-        {/* ======== THERMAL OVERLAYS ======== */}
-        <g style={{ animation: 'tun-thermal-pulse 3s ease-in-out infinite' }}>
-          <ellipse cx={lerp(NR, FR, 0.28) - 80} cy={lerp(NT + 100, FT + 40, 0.28)} rx={100} ry={70} fill="url(#tun-thermal-hot)" />
-          {[0, 1, 2, 3].map(i => (
-            <line key={`therm-${i}`}
-              x1={lerp(NR, FR, 0.28) - 140 + i * 30} y1={lerp(NT + 80, FT + 30, 0.28) + i * 10}
-              x2={lerp(NR, FR, 0.28) - 40 + i * 20} y2={lerp(NT + 120, FT + 50, 0.28) + i * 8}
-              stroke={`rgba(255,${100 + i * 40},0,0.15)`} strokeWidth={8 - i * 1.5} strokeLinecap="round" />
-          ))}
-        </g>
-        <g style={{ animation: 'tun-thermal-pulse 4s ease-in-out infinite', animationDelay: '1s' }}>
-          <ellipse cx={lerp(NL, FL, 0.35) + 120} cy={lerp(NB - 120, FB, 0.35)} rx={120} ry={55} fill="url(#tun-thermal-warm)" />
-        </g>
-
         {/* ---- Vignette ---- */}
         <rect x="0" y="0" width={W} height={H} fill="none" stroke="rgba(0,0,0,0.6)" strokeWidth="180" />
+      </svg>
+
+      {/* ======== FAULT OVERLAY — separate layer, NOT affected by light filter ======== */}
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        preserveAspectRatio="xMidYMid slice"
+        className="pointer-events-none absolute inset-0 h-full w-full"
+        style={{ animation: stabilizationOn ? 'none' : 'tun-cam-shake 0.3s linear infinite' }}
+      >
+        {(() => {
+          interface FaultDef { wall: 'L' | 'R'; tray: number; dStart: number; dEnd: number; colors: Array<{ offset: number; color: string; w: number }> }
+
+          const redCables   = [ { offset: -8, color: 'rgba(255,50,20,0.9)',  w: 6 }, { offset: 0, color: 'rgba(255,90,10,0.85)', w: 5.5 }, { offset: 8, color: 'rgba(255,130,30,0.75)', w: 5 } ]
+          const amberCables = [ { offset: -8, color: 'rgba(245,158,11,0.85)', w: 6 }, { offset: 0, color: 'rgba(252,211,77,0.7)',  w: 5.5 }, { offset: 8, color: 'rgba(253,224,71,0.55)', w: 5 } ]
+          const cyanCables  = [ { offset: -8, color: 'rgba(34,211,238,0.8)', w: 6 }, { offset: 0, color: 'rgba(103,232,249,0.65)', w: 5.5 }, { offset: 8, color: 'rgba(165,243,252,0.5)', w: 5 } ]
+
+          const faultMap: Record<string, FaultDef[]> = {
+            B3: [
+              { wall: 'R', tray: 0.50, dStart: 0.18, dEnd: 0.40, colors: redCables },
+              { wall: 'L', tray: 0.75, dStart: 0.12, dEnd: 0.35, colors: redCables },
+            ],
+            C2: [
+              { wall: 'L', tray: 0.25, dStart: 0.22, dEnd: 0.48, colors: cyanCables },
+              { wall: 'R', tray: 0.75, dStart: 0.30, dEnd: 0.52, colors: amberCables },
+            ],
+          }
+
+          const faults = faultMap[segmentId] ?? []
+
+          return faults.map((f, fi) => {
+            const wallNearX = f.wall === 'R' ? NR : NL
+            const wallFarX  = f.wall === 'R' ? FR : FL
+            const nearY = lerp(NT, NB, f.tray)
+            const farY  = lerp(FT, FB, f.tray)
+
+            return (
+              <g key={`fault-${fi}`} style={{ animation: `tun-thermal-pulse ${3 + fi * 0.5}s ease-in-out infinite`, animationDelay: `${fi * 0.5}s` }}>
+                {f.colors.map(({ offset, color, w }, ci) => (
+                  <line key={`f${fi}-c${ci}`}
+                    x1={lerp(wallNearX, wallFarX, f.dStart)} y1={lerp(nearY + offset, farY + offset * 0.3, f.dStart)}
+                    x2={lerp(wallNearX, wallFarX, f.dEnd)}   y2={lerp(nearY + offset, farY + offset * 0.3, f.dEnd)}
+                    stroke={color} strokeWidth={w} strokeLinecap="round" />
+                ))}
+              </g>
+            )
+          })
+        })()}
       </svg>
 
       {/* ========== Scan Line ========== */}

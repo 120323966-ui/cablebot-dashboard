@@ -18,10 +18,21 @@ import type {
 } from '@/types/command'
 
 export function CommandPage() {
-  const { data, loading, error } = useCommandCenter()
+  const [robotId, setRobotId] = useState('R1')
+  const { data, loading, error } = useCommandCenter(robotId)
   const [liveData, setLiveData] = useState<CommandCenterResponse | null>(null)
   const [dockState, setDockState] = useState<ControlState | null>(null)
   const [voiceOpen, setVoiceOpen] = useState(false)
+  const [activeAux, setActiveAux] = useState<Set<string>>(new Set())
+
+  const toggleAux = useCallback((id: string) => {
+    setActiveAux((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
 
   const merged = useMemo(() => liveData ?? data, [data, liveData])
 
@@ -32,15 +43,22 @@ export function CommandPage() {
     })
   }, [])
 
+  // Sync initial data → liveData
   useEffect(() => {
-    if (data && !liveData) setLiveData(data)
-  }, [data, liveData])
-
-  useEffect(() => {
-    if (data && !dockState) setDockState(data.control)
-  }, [data, dockState])
+    if (data) {
+      setLiveData(data)
+      setDockState(data.control)
+    }
+  }, [data])
 
   useRealtimeCommandCenter(merged, handleMessage)
+
+  // When switching robot, reset live state so new data takes over
+  const switchRobot = useCallback((id: string) => {
+    setRobotId(id)
+    setLiveData(null)
+    setDockState(null)
+  }, [])
 
   if (loading) {
     return <div className="panel-card h-[calc(100vh-148px)] animate-pulse bg-white/[0.03]" />
@@ -104,11 +122,13 @@ export function CommandPage() {
 
   return (
     <section className="flex h-[calc(100vh-148px)] min-h-0 flex-col gap-2.5 overflow-hidden">
-      {/* A — Slim header strip */}
+      {/* A — Slim header strip with robot switcher */}
       <CommandHeaderBar
         meta={merged.meta}
         mission={merged.mission}
         robot={merged.robot}
+        activeRobotId={robotId}
+        onSwitchRobot={switchRobot}
       />
 
       {/* B — Main stage: video + context sidebar */}
@@ -119,6 +139,7 @@ export function CommandPage() {
             video={merged.primaryVideo}
             mission={merged.mission}
             control={currentControl}
+            activeAux={activeAux}
           />
 
           {/* Voice overlay — appears on top of video */}
@@ -139,6 +160,8 @@ export function CommandPage() {
             sensors={merged.sensors}
             auxViews={merged.auxViews}
             events={merged.events}
+            activeAux={activeAux}
+            onToggleAux={toggleAux}
           />
         </div>
       </div>

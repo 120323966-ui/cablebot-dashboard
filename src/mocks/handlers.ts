@@ -12,9 +12,11 @@ export const handlers = [
     return HttpResponse.json(createHomeOverviewMock())
   }),
 
-  http.get('/api/dashboard/command', async () => {
+  http.get('/api/dashboard/command', async ({ request }) => {
+    const url = new URL(request.url)
+    const robotId = url.searchParams.get('robotId') ?? 'R1'
     await delay(180)
-    return HttpResponse.json(createCommandCenterMock())
+    return HttpResponse.json(createCommandCenterMock(robotId))
   }),
 
   http.get('/api/dashboard/alerts', async () => {

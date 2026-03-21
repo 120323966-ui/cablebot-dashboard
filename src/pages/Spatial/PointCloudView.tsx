@@ -130,27 +130,28 @@ function generateTunnelCloud(
   const pW = Math.ceil(W * 3)
   const pH = Math.ceil(H * 3)
 
-  // Four walls
-  wallGrid('y', hh, [-L / 2, L / 2], pL, [-hw, hw], pW, 0.6) // ceiling
-  wallGrid('y', -hh, [-L / 2, L / 2], pL, [-hw, hw], pW, 0.72) // floor
-  wallGrid('z', -hw, [-L / 2, L / 2], pL, [-hh, hh], pH, 0.82) // left
-  wallGrid('z', hw, [-L / 2, L / 2], pL, [-hh, hh], pH, 0.82) // right
+  // Four walls — much darker to let cables stand out
+  wallGrid('y', hh, [-L / 2, L / 2], pL, [-hw, hw], pW, 0.3)  // ceiling
+  wallGrid('y', -hh, [-L / 2, L / 2], pL, [-hw, hw], pW, 0.35) // floor
+  wallGrid('z', -hw, [-L / 2, L / 2], pL, [-hh, hh], pH, 0.4)  // left
+  wallGrid('z', hw, [-L / 2, L / 2], pL, [-hh, hh], pH, 0.4)   // right
 
-  /* ── Cable trays (3 levels × 2 sides) ── */
+  /* ── Cable trays (3 levels × 2 sides) — brighter, more saturated ── */
   const trayYs = [-0.65, 0.1, 0.85]
   const cableRgb: [number, number, number][] = [
-    [0.72, 0.14, 0.14],
-    [0.18, 0.18, 0.18],
-    [0.82, 0.52, 0.08],
-    [0.1, 0.32, 0.52],
-    [0.12, 0.52, 0.28],
+    [0.9, 0.18, 0.18],   // red cable — brighter
+    [0.35, 0.35, 0.35],  // dark grey cable — lifted
+    [0.95, 0.62, 0.1],   // orange cable — brighter
+    [0.15, 0.45, 0.72],  // blue cable — more saturated
+    [0.18, 0.7, 0.38],   // green cable — brighter
   ]
   for (const ty of trayYs) {
     for (let side = -1; side <= 1; side += 2) {
       const wz = side * hw
       for (let i = 0; i < pL * 1.4; i++) {
         const x = nz((i / (pL * 1.4)) * L - L / 2, n * 0.4)
-        push(x, nz(ty, n * 0.3), nz(wz - side * 0.3, n * 0.3), 0.28, 0.32, 0.38)
+        // Tray bracket — lighter metallic grey to stand out from dark walls
+        push(x, nz(ty, n * 0.3), nz(wz - side * 0.3, n * 0.3), 0.42, 0.46, 0.52)
         for (let c = 0; c < 3; c++) {
           const cc =
             cableRgb[
@@ -176,10 +177,10 @@ function generateTunnelCloud(
     push(x, nz(-hh + 0.04, n * 0.15), nz(0.55, n * 0.15), 0.22, 0.28, 0.32)
   }
 
-  /* ── Ceiling light strip ── */
+  /* ── Ceiling light strip — brighter for spatial reference ── */
   for (let i = 0; i < pL; i++) {
     const x = nz((i / pL) * L - L / 2, n * 0.3)
-    push(x, nz(hh - 0.04, n * 0.1), nz(0, n * 0.08), 0.48, 0.52, 0.58)
+    push(x, nz(hh - 0.04, n * 0.1), nz(0, n * 0.08), 0.65, 0.7, 0.78)
   }
 
   /* ── Segment-specific features ── */
@@ -353,12 +354,15 @@ function applyFeatures(
    Alert markers + label 3D positions
    ═══════════════════════════════════════════════════ */
 
-function generateAlertMarkers(alerts: PipeAlert[], L: number) {
+function generateAlertMarkers(alerts: PipeAlert[], L: number, segId?: string) {
   const pts: number[] = []
   const cls: number[] = []
   const labelPos: THREE.Vector3[] = []
 
-  for (const alert of alerts) {
+  const hw = 2, hh = 1.5  // tunnel half-dimensions match generateTunnelCloud
+
+  for (let ai = 0; ai < alerts.length; ai++) {
+    const alert = alerts[ai]
     const cx = alert.progress * L - L / 2
     const sc =
       alert.severity === 'critical'
@@ -367,11 +371,25 @@ function generateAlertMarkers(alerts: PipeAlert[], L: number) {
           ? [1.0, 0.65, 0.05]
           : [0.2, 0.7, 0.95]
 
+    // Determine wall position based on alert index (alternate sides)
+    // and vertical position on the wall (cable tray height)
+    const onRight = ai % 2 === 0
+    const wallZ = onRight ? hw - 0.15 : -(hw - 0.15)  // just inside wall surface
+    const wallY = ai % 3 === 0 ? 0.3 : ai % 3 === 1 ? -0.4 : 0.8  // cable tray heights
+
+    // Scatter marker particles around the wall position
     for (let i = 0; i < 65; i++) {
-      pts.push(nz(cx, 0.22), nz(0, 0.4), nz(0, 0.4))
+      pts.push(
+        nz(cx, 0.22),
+        nz(wallY, 0.25),
+        nz(wallZ, 0.15),
+      )
       cls.push(sc[0], sc[1], sc[2])
     }
-    labelPos.push(new THREE.Vector3(cx, 2.3, 0))
+
+    // Label floats slightly outward from wall so it's visible
+    const labelZ = onRight ? hw + 0.3 : -(hw + 0.3)
+    labelPos.push(new THREE.Vector3(cx, wallY + 0.6, labelZ))
   }
 
   return {
@@ -489,7 +507,7 @@ export function PointCloudView({ segment, sensors: _sensors, alerts, focusAlertI
     scene.add(new THREE.Points(geom, mat))
 
     /* — Alert marker cloud — */
-    const alertData = generateAlertMarkers(alerts, L)
+    const alertData = generateAlertMarkers(alerts, L, segment.id)
     const aGeom = new THREE.BufferGeometry()
     aGeom.setAttribute(
       'position',
