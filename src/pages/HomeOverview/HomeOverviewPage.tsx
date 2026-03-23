@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { StatusBar } from './StatusBar'
 import { MissionStrip } from './MissionStrip'
 import { KpiStrip } from './KpiStrip'
@@ -6,34 +7,73 @@ import { AlertStream } from './AlertStream'
 import { HeatmapChart } from './HeatmapChart'
 import { FleetPanel } from './FleetPanel'
 import { ActionDock } from './ActionDock'
-import { useDashboardHome } from '@/hooks/useDashboardHome'
-import { applyRealtime, useRealtimeDashboard } from '@/hooks/useRealtimeDashboard'
-import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { Button } from '@/components/ui/Button'
-import type { HomeOverviewResponse, QuickAction } from '@/types/dashboard'
+import { useVoiceEngine } from '@/hooks/useVoiceEngine'
+import { useDashboardContext } from '@/context/DashboardContext'
+import type { VoiceIntent } from '@/utils/voiceIntents'
 
 export function HomeOverviewPage() {
-  const { data, loading, error } = useDashboardHome()
-  const [liveData, setLiveData] = useState<HomeOverviewResponse | null>(null)
-  const [pendingAction, setPendingAction] = useState<QuickAction | null>(null)
+  const navigate = useNavigate()
+  const { data, loading, error, updateData } = useDashboardContext()
 
-  const merged = useMemo(() => liveData ?? data, [data, liveData])
+  /* ── Voice command execution ── */
+  const executeVoiceCommand = useCallback(
+    (intent: VoiceIntent) => {
+      switch (intent.action) {
+        case 'PAUSE_MISSION':
+          updateData((c) => {
+            if (!c.activeTask) return c
+            return { ...c, activeTask: { ...c.activeTask, status: 'paused' } }
+          })
+          break
 
-  const handleMessage = useCallback(
-    (message: Parameters<typeof applyRealtime>[1]) => {
-      setLiveData((current) => {
-        if (!current) return current
-        return applyRealtime(current, message)
-      })
+        case 'RESUME_MISSION':
+          updateData((c) => {
+            if (!c.activeTask) return c
+            return { ...c, activeTask: { ...c.activeTask, status: 'running' } }
+          })
+          break
+
+        case 'EMERGENCY_STOP':
+          updateData((c) => {
+            if (!c.activeTask) return c
+            return { ...c, activeTask: { ...c.activeTask, status: 'paused' } }
+          })
+          break
+
+        case 'NAV_ALERTS':
+          navigate('/alerts')
+          break
+        case 'NAV_COMMAND':
+          navigate('/command')
+          break
+        case 'NAV_SPATIAL':
+          navigate('/spatial')
+          break
+        case 'NAV_REPORTS':
+          navigate('/reports')
+          break
+        case 'NAV_HISTORY':
+          navigate('/history')
+          break
+
+        case 'FOCUS_SEGMENT':
+          if (intent.param) {
+            navigate(`/spatial?segment=${intent.param}`)
+          }
+          break
+
+        case 'FOCUS_SEGMENT_MISSING':
+          break
+
+        default:
+          break
+      }
     },
-    [],
+    [navigate, updateData],
   )
 
-  useEffect(() => {
-    if (data && !liveData) setLiveData(data)
-  }, [data, liveData])
-
-  useRealtimeDashboard(merged, handleMessage)
+  const voice = useVoiceEngine(executeVoiceCommand)
 
   /* ── Loading ── */
   if (loading) {
@@ -51,7 +91,7 @@ export function HomeOverviewPage() {
   }
 
   /* ── Error ── */
-  if (error || !merged) {
+  if (error || !data) {
     return (
       <div className="panel-card flex min-h-[360px] items-center justify-center">
         <div className="text-center">
@@ -65,56 +105,29 @@ export function HomeOverviewPage() {
     )
   }
 
-  /* ── Action handler ── */
-  const onAction = (action: QuickAction) => {
-    if (action.confirm) {
-      setPendingAction(action)
-      return
-    }
-    window.alert(`已执行：${action.label}`)
-  }
-
   return (
     <div className="flex flex-col gap-3">
-      {/* Row 1: Status bar */}
-      <StatusBar meta={merged.meta} />
+      <StatusBar meta={data.meta} />
+      <KpiStrip metrics={data.kpis} />
+      <MissionStrip task={data.activeTask} />
 
-      {/* Row 2: KPI + Mission */}
-      <KpiStrip metrics={merged.kpis} />
-      <MissionStrip task={merged.activeTask} />
-
-      {/* Row 3: Three-column core — fixed height, internal scroll */}
       <div className="grid h-[520px] gap-3 xl:grid-cols-[1fr_1.5fr_1fr]">
         <div className="min-h-0 h-full">
-          <AlertStream alerts={merged.alerts} />
+          <AlertStream alerts={data.alerts} />
         </div>
         <div className="min-h-0 h-full">
           <HeatmapChart
-            risk={merged.risk}
-            alerts={merged.alerts}
-            activeTask={merged.activeTask}
+            risk={data.risk}
+            alerts={data.alerts}
+            activeTask={data.activeTask}
           />
         </div>
         <div className="min-h-0 h-full">
-          <FleetPanel robots={merged.robots} trends={merged.trends} />
+          <FleetPanel robots={data.robots} trends={data.trends} />
         </div>
       </div>
 
-      {/* Row 4: Action dock */}
-      <ActionDock actions={merged.actions} onAction={onAction} />
-
-      {/* Confirm dialog */}
-      <ConfirmDialog
-        open={Boolean(pendingAction)}
-        title={pendingAction?.label ?? ''}
-        description={pendingAction?.description ?? ''}
-        confirmLabel="确认执行"
-        onCancel={() => setPendingAction(null)}
-        onConfirm={() => {
-          if (pendingAction) window.alert(`已确认执行：${pendingAction.label}`)
-          setPendingAction(null)
-        }}
-      />
+      <ActionDock voice={voice} />
     </div>
   )
 }

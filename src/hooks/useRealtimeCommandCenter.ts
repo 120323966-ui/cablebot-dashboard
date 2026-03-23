@@ -27,6 +27,10 @@ export function applyCommandRealtime(
 ): CommandCenterResponse {
   switch (message.type) {
     case 'MISSION_PATCH':
+      // ── 暂停时忽略进度更新 ──
+      if (data.mission.status === 'paused' || data.mission.status === 'attention') {
+        return data
+      }
       return {
         ...data,
         meta: { ...data.meta, updatedAt: new Date().toISOString() },
@@ -100,20 +104,21 @@ export function useRealtimeCommandCenter(
       const current = dataRef.current
       if (!current) return
 
-      const nextProgress = Math.min(100, current.mission.progressPct + Math.round(rand(1, 3)))
-      const nextEta = Math.max(0, current.mission.etaMinutes - 1)
+      // ── 暂停/急停时跳过进度推送 ──
+      if (current.mission.status !== 'paused' && current.mission.status !== 'attention') {
+        const nextProgress = Math.min(100, current.mission.progressPct + Math.round(rand(1, 3)))
+        const nextEta = Math.max(0, current.mission.etaMinutes - 1)
 
-      onMessage({
-        type: 'MISSION_PATCH',
-        payload: {
-          progressPct: nextProgress,
-          elapsedMinutes: current.mission.elapsedMinutes + 1,
-          etaMinutes: nextEta,
-          ...(current.mission.status === 'paused' || current.mission.status === 'attention'
-            ? {}
-            : { status: nextProgress >= 100 ? 'attention' : 'running' }),
-        },
-      })
+        onMessage({
+          type: 'MISSION_PATCH',
+          payload: {
+            progressPct: nextProgress,
+            elapsedMinutes: current.mission.elapsedMinutes + 1,
+            etaMinutes: nextEta,
+            status: nextProgress >= 100 ? 'attention' : 'running',
+          },
+        })
+      }
 
       onMessage({
         type: 'ROBOT_PULSE',
@@ -162,7 +167,6 @@ export function useRealtimeCommandCenter(
     const eventTimer = window.setInterval(() => {
       const current = dataRef.current
       if (!current) return
-      // Pass current segment so events match the active robot's location
       onMessage({
         type: 'EVENT_NEW',
         payload: createRealtimeCommandEvent(current.mission.segmentId),

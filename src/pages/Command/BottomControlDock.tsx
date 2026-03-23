@@ -20,27 +20,32 @@ const modeLabels: Record<CommandMode, string> = {
   manual: '接管',
 }
 
-/* ── Shared button atoms ─────────────────────────────── */
+/* ── Highlight ring class ── */
+const HIGHLIGHT_RING = 'ring-2 ring-cyan-400/60 ring-offset-1 ring-offset-slate-950'
+
+/* ── Shared button atoms ── */
 
 function Chip({
   children,
   active = false,
+  highlight = false,
   className = '',
   onClick,
 }: {
   children: React.ReactNode
   active?: boolean
+  highlight?: boolean
   className?: string
   onClick?: () => void
 }) {
   return (
     <button
       onClick={onClick}
-      className={`inline-flex h-9 items-center justify-center rounded-xl border px-3 text-[12px] font-medium leading-none whitespace-nowrap transition ${
+      className={`inline-flex h-9 items-center justify-center rounded-xl border px-3 text-[12px] font-medium leading-none whitespace-nowrap transition-all duration-300 ${
         active
           ? 'border-cyan-400/30 bg-cyan-400/12 text-white'
           : 'border-white/8 bg-white/[0.04] text-slate-300 hover:border-cyan-400/18 hover:bg-white/[0.06] hover:text-white'
-      } ${className}`}
+      } ${highlight ? HIGHLIGHT_RING : ''} ${className}`}
     >
       {children}
     </button>
@@ -64,18 +69,17 @@ function IconBtn({
   )
 }
 
-/* ── Divider between groups ──────────────────────────── */
-
 function Divider() {
   return <div className="mx-1 h-8 w-px bg-white/8" />
 }
 
-/* ── Main component ──────────────────────────────────── */
+/* ── Main component ── */
 
 export function BottomControlDock({
   control,
   missionStatus,
   voiceActive,
+  highlightKey,
   onModeChange,
   onToggle,
   onAction,
@@ -84,6 +88,8 @@ export function BottomControlDock({
   control: ControlState
   missionStatus: 'running' | 'paused' | 'attention'
   voiceActive: boolean
+  /** 最近一次语音操作的控件 key，用于短暂高亮 */
+  highlightKey?: string | null
   onModeChange: (mode: CommandMode) => void
   onToggle: (key: 'lightOn' | 'stabilizationOn' | 'recording') => void
   onAction: (label: string) => void
@@ -91,16 +97,19 @@ export function BottomControlDock({
 }) {
   const isPaused = missionStatus === 'paused'
   const isStopped = missionStatus === 'attention'
+  const hl = (key: string) => highlightKey === key
+
   return (
     <section className="shrink-0 rounded-2xl border border-white/8 bg-slate-950/65 px-4 py-2.5 backdrop-blur-xl">
       <div className="flex items-center justify-between gap-2">
 
-        {/* ── Group 1: Drive mode + Direction ──────── */}
+        {/* ── Group 1: Drive mode + Direction ── */}
         <div className="flex items-center gap-1.5">
           {(['auto', 'semi-auto', 'manual'] as const).map((mode) => (
             <Chip
               key={mode}
               active={control.driveMode === mode}
+              highlight={hl('mode') && control.driveMode === mode}
               onClick={() => onModeChange(mode)}
               className="min-w-[52px] px-0"
             >
@@ -124,13 +133,9 @@ export function BottomControlDock({
           <IconBtn onClick={() => onAction('右转')}>
             <ArrowRight className="h-4 w-4" />
           </IconBtn>
-
-          <IconBtn onClick={() => onAction('停止')}>
-            <Pause className="h-4 w-4" />
-          </IconBtn>
         </div>
 
-        {/* ── Group 2: Camera PTZ + toggles ────────── */}
+        {/* ── Group 2: Camera PTZ + toggles ── */}
         <div className="flex items-center gap-1.5">
           <Chip onClick={() => onAction('云台上仰')}>
             <Camera className="mr-1 h-3.5 w-3.5" /> 上仰
@@ -143,19 +148,21 @@ export function BottomControlDock({
 
           <Chip
             active={control.lightOn}
+            highlight={hl('light')}
             onClick={() => onToggle('lightOn')}
           >
             <Lightbulb className="mr-1 h-3.5 w-3.5" /> 灯光
           </Chip>
           <Chip
             active={control.stabilizationOn}
+            highlight={hl('stabilization')}
             onClick={() => onToggle('stabilizationOn')}
           >
             <ScanLine className="mr-1 h-3.5 w-3.5" /> 稳定
           </Chip>
         </div>
 
-        {/* ── Voice command button (prominent) ────── */}
+        {/* ── Voice command button ── */}
         <button
           onClick={onVoice}
           className={`relative inline-flex h-10 items-center gap-1.5 rounded-xl border px-4 text-[12px] font-semibold transition active:scale-95 ${
@@ -174,7 +181,7 @@ export function BottomControlDock({
           语音
         </button>
 
-        {/* ── Group 3: Task actions + E-Stop ─────── */}
+        {/* ── Group 3: Task actions + E-Stop ── */}
         <div className="flex items-center gap-1.5">
           <Badge tone={control.recording ? 'danger' : 'neutral'}>
             {control.recording ? 'REC' : 'IDLE'}
@@ -182,6 +189,7 @@ export function BottomControlDock({
 
           <Chip
             active={control.recording}
+            highlight={hl('recording')}
             onClick={() => onToggle('recording')}
           >
             <Video className="mr-1 h-3.5 w-3.5" /> 录制
@@ -189,6 +197,7 @@ export function BottomControlDock({
 
           <Chip
             active={isPaused}
+            highlight={hl('pause')}
             onClick={() => onAction('暂停巡检')}
             className={isPaused ? '!border-amber-400/30 !bg-amber-400/12 !text-amber-200' : ''}
           >
@@ -198,14 +207,13 @@ export function BottomControlDock({
 
           <Divider />
 
-          {/* E-Stop — prominent red, larger */}
           <button
             onClick={() => onAction('急停')}
-            className={`inline-flex h-10 items-center gap-1.5 rounded-xl border px-5 text-[13px] font-semibold text-white shadow-lg transition active:scale-95 ${
+            className={`inline-flex h-10 items-center gap-1.5 rounded-xl border px-5 text-[13px] font-semibold text-white shadow-lg transition-all duration-300 active:scale-95 ${
               isStopped
                 ? 'animate-pulse border-rose-400/60 bg-rose-600 shadow-rose-900/40'
                 : 'border-rose-500/50 bg-rose-500 shadow-rose-900/30 hover:bg-rose-400'
-            }`}
+            } ${hl('estop') ? 'ring-2 ring-rose-400/60 ring-offset-1 ring-offset-slate-950' : ''}`}
           >
             <Power className="h-4 w-4" />
             {isStopped ? '已急停' : '急停'}

@@ -71,11 +71,17 @@ export function MissionStrip({ task }: { task: ActiveTask | null }) {
       <div className="flex min-w-[140px] flex-1 items-center gap-3">
         <div className="h-2 flex-1 overflow-hidden rounded-full bg-white/6">
           <div
-            className="h-full rounded-full bg-[linear-gradient(90deg,#22d3ee,#60a5fa)] transition-[width] duration-500"
+            className={`h-full rounded-full transition-all duration-500 ${
+              task.status === 'paused'
+                ? 'bg-[linear-gradient(90deg,#f59e0b,#d97706)] animate-pulse'
+                : 'bg-[linear-gradient(90deg,#22d3ee,#60a5fa)]'
+            }`}
             style={{ width: `${pct}%` }}
           />
         </div>
-        <span className="text-sm font-semibold tabular-nums text-white">{pct}%</span>
+        <span className={`text-sm font-semibold tabular-nums ${
+          task.status === 'paused' ? 'text-amber-300' : 'text-white'
+        }`}>{pct}%</span>
       </div>
 
       {/* CTA */}

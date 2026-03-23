@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { createRealtimeAlert } from '@/mocks/data/dashboardHome'
+import { announceAlert } from '@/utils/voiceAudio'
 import type { ActiveTask, HomeOverviewResponse, RealtimeMessage } from '@/types/dashboard'
 
 function rand(min: number, max: number) {
@@ -33,13 +34,13 @@ export function applyRealtime(
 ): HomeOverviewResponse {
   switch (message.type) {
     case 'TASK_PROGRESS':
-      return data.activeTask
-        ? {
-            ...data,
-            meta: { ...data.meta, updatedAt: new Date().toISOString() },
-            activeTask: { ...data.activeTask, ...message.payload },
-          }
-        : data
+      if (!data.activeTask) return data
+      if (data.activeTask.status === 'paused') return data
+      return {
+        ...data,
+        meta: { ...data.meta, updatedAt: new Date().toISOString() },
+        activeTask: { ...data.activeTask, ...message.payload },
+      }
 
     case 'ROBOT_PULSE':
       return {
@@ -57,6 +58,13 @@ export function applyRealtime(
             new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime(),
         )
         .slice(0, 10)
+
+      // TTS 播报新告警（critical / warning）
+      announceAlert(
+        message.payload.title,
+        message.payload.severity,
+        message.payload.segmentId,
+      )
 
       return {
         ...data,
@@ -102,6 +110,9 @@ export function useRealtimeDashboard(
 
       if (random < 0.34 && current.activeTask) {
         const task = current.activeTask
+
+        if (task.status === 'paused') return
+
         const nextChecksCompleted = Math.min(
           task.checksTotal,
           task.checksCompleted + 1,

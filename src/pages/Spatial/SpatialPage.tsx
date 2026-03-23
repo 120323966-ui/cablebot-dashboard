@@ -1,4 +1,5 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Bot, MapPin, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { useSpatial } from '@/hooks/useSpatial'
@@ -15,10 +16,29 @@ export function SpatialPage() {
     updateRobotStatus, moveRobotToSegment, updateRobotSpeed,
   } = useSpatial()
 
+  const [searchParams, setSearchParams] = useSearchParams()
   const [focusAlertId, setFocusAlertId] = useState<string | null>(null)
-
-  /* 每次点击用时间戳保证重复点击同一告警也能触发飞行 */
   const [focusKey, setFocusKey] = useState(0)
+
+  /* ── 从 URL 参数自动选中区段 ── */
+  useEffect(() => {
+    if (!data) return
+    const segParam = searchParams.get('segment')
+    if (!segParam) return
+
+    // 验证该区段确实存在
+    const exists = data.segments.some((s) => s.id === segParam)
+    if (exists) {
+      selectSegment(segParam)
+    }
+
+    // 消费掉参数，避免后续操作时反复触发
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      next.delete('segment')
+      return next
+    }, { replace: true })
+  }, [data, searchParams, selectSegment, setSearchParams])
 
   const handleAlertClick = useCallback((alertId: string) => {
     setFocusAlertId(alertId)

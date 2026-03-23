@@ -1,13 +1,21 @@
-import { Bell, CloudRain, Search, ShieldCheck, Wifi } from 'lucide-react'
+import { Bell, CloudRain, Search, ShieldCheck, Volume2, VolumeX, Wifi } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { isVoiceMuted, setVoiceMuted } from '@/utils/voiceAudio'
 
 export function TopBar() {
   const [time, setTime] = useState(new Date())
+  const [muted, setMuted] = useState(isVoiceMuted())
 
   useEffect(() => {
     const timer = window.setInterval(() => setTime(new Date()), 1000)
     return () => window.clearInterval(timer)
   }, [])
+
+  const toggleMute = () => {
+    const next = !muted
+    setMuted(next)
+    setVoiceMuted(next)
+  }
 
   return (
     <div className="mb-6 flex items-center justify-between gap-4">
@@ -32,6 +40,20 @@ export function TopBar() {
           <ShieldCheck className="h-4 w-4 text-emerald-300" />
           安全策略已启用
         </div>
+
+        {/* 语音播报静音开关 */}
+        <button
+          onClick={toggleMute}
+          title={muted ? '语音播报已关闭，点击开启' : '语音播报已开启，点击关闭'}
+          className={`rounded-2xl border p-3 transition ${
+            muted
+              ? 'border-white/8 bg-white/[0.04] text-slate-500 hover:bg-white/[0.07] hover:text-slate-300'
+              : 'border-cyan-400/20 bg-cyan-400/8 text-cyan-300 hover:bg-cyan-400/15'
+          }`}
+        >
+          {muted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
+        </button>
+
         <button className="rounded-2xl border border-white/8 bg-white/[0.04] p-3 text-slate-300 hover:bg-white/[0.07]">
           <Bell className="h-5 w-5" />
         </button>
