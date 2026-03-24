@@ -1,6 +1,5 @@
 import { useEffect, useRef } from 'react'
 import {
-  createRealtimeCommandEvent,
   createRealtimeSensorPatch,
   createRealtimeVoiceSample,
 } from '@/mocks/data/commandCenter'
@@ -164,14 +163,8 @@ export function useRealtimeCommandCenter(
       })
     }, 5000)
 
-    const eventTimer = window.setInterval(() => {
-      const current = dataRef.current
-      if (!current) return
-      onMessage({
-        type: 'EVENT_NEW',
-        payload: createRealtimeCommandEvent(current.mission.segmentId),
-      })
-    }, 12000)
+    // EVENT_NEW 定时器已移除 — 告警事件现在由 DashboardContext 全局管理，
+    // Command 页从 context.alerts 派生事件流，不再独立生成。
 
     const voiceTimer = window.setInterval(() => {
       onMessage({
@@ -195,7 +188,6 @@ export function useRealtimeCommandCenter(
 
     return () => {
       window.clearInterval(pulseTimer)
-      window.clearInterval(eventTimer)
       window.clearInterval(voiceTimer)
     }
   }, [onMessage, Boolean(data)])

@@ -123,7 +123,7 @@ export function HomeOverviewPage() {
           />
         </div>
         <div className="min-h-0 h-full">
-          <FleetPanel robots={data.robots} trends={data.trends} />
+          <FleetPanel robots={data.robots} trends={data.trends} activeTask={data.activeTask} />
         </div>
       </div>
 

@@ -131,3 +131,41 @@
   60% { width: 75%; }
   100% { width: 100%; }
 }
+
+/* ── Alert Toast 通知动画 ── */
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes toast-out {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+}
+
+/* 自动倒计时进度条 */
+@keyframes toast-countdown {
+  from { width: 100%; }
+  to { width: 0%; }
+}
+
+.toast-enter {
+  animation: toast-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.toast-exit {
+  animation: toast-out 0.28s cubic-bezier(0.55, 0, 1, 0.45) forwards;
+}

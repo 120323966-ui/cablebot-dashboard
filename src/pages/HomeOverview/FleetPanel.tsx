@@ -3,7 +3,7 @@ import ReactECharts from 'echarts-for-react'
 import { BatteryCharging, ChevronRight, MapPin, Radio, TrendingDown, TrendingUp, Minus, Zap } from 'lucide-react'
 import { Badge } from '@/components/ui/Badge'
 import { Card } from '@/components/ui/Card'
-import type { RobotOverview, TrendSeries } from '@/types/dashboard'
+import type { ActiveTask, RobotOverview, TrendSeries } from '@/types/dashboard'
 
 /* ── Robot helpers ── */
 
@@ -201,9 +201,11 @@ function TrendCard({ series }: { series: TrendSeries }) {
 export function FleetPanel({
   robots,
   trends,
+  activeTask,
 }: {
   robots: RobotOverview[]
   trends: TrendSeries[]
+  activeTask?: ActiveTask | null
 }) {
   const navigate = useNavigate()
 
@@ -214,51 +216,94 @@ export function FleetPanel({
         {robots.map((r) => {
           const bpct = Math.round(r.batteryPct)
           const isOffline = r.health === 'neutral'
+          const isIdle = r.taskStatus === 'idle'
+          const taskLabel = r.taskStatus === 'inspecting' ? '巡检中' : r.taskStatus === 'moving' ? '移动中' : '待命'
+
+          /* ── 与 activeTask 实时进度同步 ── */
+          const isActiveRobot = !!activeTask && activeTask.segmentId === r.segmentId && !isIdle
+          const progressPct = isActiveRobot
+            ? (activeTask.checksTotal > 0
+                ? Math.round((activeTask.checksCompleted / activeTask.checksTotal) * 100)
+                : activeTask.progressPct)
+            : r.taskProgressPct
+          const isPaused = isActiveRobot && activeTask.status === 'paused'
+
           return (
             <button
               key={r.id}
               onClick={() => navigate(`/command?robot=${r.id}`)}
-              className={`group flex w-full items-center gap-3 rounded-xl border border-white/6 bg-white/[0.02] px-3 py-2.5 text-left transition hover:border-cyan-400/18 hover:bg-white/[0.04] ${
+              className={`group flex w-full flex-col gap-2 rounded-xl border border-white/6 bg-white/[0.02] px-3 py-2.5 text-left transition hover:border-cyan-400/18 hover:bg-white/[0.04] ${
                 isOffline ? 'opacity-50' : ''
               }`}
             >
-              {/* Identity */}
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-white">{r.name}</span>
-                  <Badge tone={healthTone(r.health)}>{healthLabel(r.health)}</Badge>
-                </div>
-                <div className="mt-1 flex items-center gap-2 text-xs text-slate-500">
-                  <MapPin className="h-3 w-3 text-slate-600" />
-                  {r.location}
-                </div>
-              </div>
-
-              {/* Stats */}
-              <div className="flex items-center gap-3 text-xs text-slate-300">
-                <div className="flex items-center gap-1.5" title={`电量 ${bpct}%`}>
-                  <BatteryCharging className="h-3.5 w-3.5 text-slate-500" />
-                  <div className="h-1.5 w-12 overflow-hidden rounded-full bg-white/8">
-                    <div
-                      className={`h-full rounded-full ${batteryColor(bpct)}`}
-                      style={{ width: `${bpct}%` }}
-                    />
+              {/* Row 1: identity + stats + chevron */}
+              <div className="flex w-full items-center gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-white">{r.name}</span>
+                    <Badge tone={healthTone(r.health)}>{healthLabel(r.health)}</Badge>
                   </div>
-                  <span className="w-8 tabular-nums">{bpct}%</span>
+                  <div className="mt-1 flex items-center gap-2 text-xs text-slate-500">
+                    <MapPin className="h-3 w-3 text-slate-600" />
+                    {r.location}
+                  </div>
                 </div>
 
-                <span className="inline-flex items-center gap-1 text-slate-400" title="信号强度">
-                  <Radio className="h-3 w-3" />
-                  {r.signalRssi}
-                </span>
+                <div className="flex items-center gap-3 text-xs text-slate-300">
+                  <div className="flex items-center gap-1.5" title={`电量 ${bpct}%`}>
+                    <BatteryCharging className="h-3.5 w-3.5 text-slate-500" />
+                    <div className="h-1.5 w-12 overflow-hidden rounded-full bg-white/8">
+                      <div
+                        className={`h-full rounded-full ${batteryColor(bpct)}`}
+                        style={{ width: `${bpct}%` }}
+                      />
+                    </div>
+                    <span className="w-8 tabular-nums">{bpct}%</span>
+                  </div>
+                  <span className="inline-flex items-center gap-1 text-slate-400" title="信号强度">
+                    <Radio className="h-3 w-3" />
+                    {r.signalRssi}
+                  </span>
+                  <span className="inline-flex items-center gap-1 text-slate-400" title="速度">
+                    <Zap className="h-3 w-3" />
+                    {r.speedKmh}
+                  </span>
+                </div>
 
-                <span className="inline-flex items-center gap-1 text-slate-400" title="速度">
-                  <Zap className="h-3 w-3" />
-                  {r.speedKmh}
-                </span>
+                <ChevronRight className="h-3.5 w-3.5 shrink-0 text-slate-700 transition group-hover:text-cyan-400" />
               </div>
 
-              <ChevronRight className="h-3.5 w-3.5 shrink-0 text-slate-700 transition group-hover:text-cyan-400" />
+              {/* Row 2: task progress — 独占整行宽度 */}
+              <div className="flex w-full items-center gap-2.5">
+                <span className={`shrink-0 text-[11px] font-medium ${
+                  isIdle ? 'text-slate-500'
+                  : isPaused ? 'text-amber-400'
+                  : r.taskStatus === 'inspecting' ? 'text-cyan-400'
+                  : 'text-amber-400'
+                }`}>
+                  {isPaused ? '已暂停' : taskLabel}
+                  {!isIdle && <span className="ml-1 text-slate-500">{r.segmentId}</span>}
+                </span>
+                {!isIdle && (
+                  <>
+                    <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/8">
+                      <div
+                        className={`h-full rounded-full transition-all duration-500 ${
+                          isPaused
+                            ? 'bg-[linear-gradient(90deg,#f59e0b,#d97706)] animate-pulse'
+                            : r.taskStatus === 'inspecting'
+                              ? 'bg-[linear-gradient(90deg,#22d3ee,#60a5fa)]'
+                              : 'bg-amber-400/60'
+                        }`}
+                        style={{ width: `${progressPct}%` }}
+                      />
+                    </div>
+                    <span className={`shrink-0 text-xs font-semibold tabular-nums ${
+                      isPaused ? 'text-amber-300' : 'text-slate-300'
+                    }`}>{progressPct}%</span>
+                  </>
+                )}
+              </div>
             </button>
           )
         })}

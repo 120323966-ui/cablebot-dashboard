@@ -13,12 +13,18 @@ import {
 } from '@/hooks/useRealtimeCommandCenter'
 import { useDashboardContext } from '@/context/DashboardContext'
 import { useVoiceEngine } from '@/hooks/useVoiceEngine'
+import {
+  registerCommandToggle,
+  unregisterCommandToggle,
+} from '@/hooks/useKeyboardShortcuts'
 import type {
   CommandCenterResponse,
+  CommandEvent,
   CommandMode,
   CommandRealtimeMessage,
   CommandMission,
   ControlState,
+  EventStatus,
 } from '@/types/command'
 import type { VoiceIntent } from '@/utils/voiceIntents'
 
@@ -68,7 +74,7 @@ export function CommandPage() {
   const [highlightKey, setHighlightKey] = useState<string | null>(null)
   const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const { data: dashboardData, updateData: updateDashboard } = useDashboardContext()
+  const { data: dashboardData, updateData: updateDashboard, alerts: globalAlerts, updateAlertStatus } = useDashboardContext()
   const dashboardRef = useRef(dashboardData)
   dashboardRef.current = dashboardData
 
@@ -89,6 +95,41 @@ export function CommandPage() {
   }, [])
 
   const merged = useMemo(() => liveData ?? data, [data, liveData])
+
+  /* ── 从全局告警列表派生 Command 页事件流 ── */
+  const derivedEvents = useMemo(() => {
+    if (!merged) return []
+    const segmentId = merged.mission.segmentId
+
+    // 过滤当前区段告警，转换为 CommandEvent 格式
+    return globalAlerts
+      .filter((a) => a.segmentId === segmentId)
+      .slice(0, 8)
+      .map((a): CommandEvent => {
+        // status 映射：AlertItem 'closed' → CommandEvent 'processing'
+        const eventStatus: EventStatus =
+          a.status === 'closed' ? 'processing'
+          : a.status === 'acknowledged' ? 'acknowledged'
+          : 'new'
+
+        // source 根据告警标题关键词推断
+        const source = a.title.includes('热像') || a.title.includes('温') ? '热成像联动'
+          : a.title.includes('湿') || a.title.includes('渗') ? '视觉识别'
+          : a.title.includes('通信') ? '链路监测'
+          : '环境传感'
+
+        return {
+          id: `EV-${a.id.replace('AL-', '')}`,
+          title: a.title,
+          severity: a.severity,
+          status: eventStatus,
+          source,
+          segmentId: a.segmentId,
+          occurredAt: a.occurredAt,
+          detail: a.value,
+        }
+      })
+  }, [globalAlerts, merged])
 
   const handleMessage = useCallback((message: CommandRealtimeMessage) => {
     setLiveData((current) => {
@@ -140,6 +181,12 @@ export function CommandPage() {
   const toggleControl = useCallback((key: 'lightOn' | 'stabilizationOn' | 'recording') => {
     setDockState((c) => (c ? { ...c, [key]: !c[key] } : c))
   }, [])
+
+  /* ── 注册键盘快捷键回调（L/R 控制灯光/录制） ── */
+  useEffect(() => {
+    registerCommandToggle((key) => toggleControl(key))
+    return () => unregisterCommandToggle()
+  }, [toggleControl])
 
   const setControlOn = useCallback((key: 'lightOn' | 'stabilizationOn' | 'recording', value: boolean) => {
     setDockState((c) => (c ? { ...c, [key]: value } : c))
@@ -351,9 +398,14 @@ export function CommandPage() {
             mission={merged.mission}
             sensors={merged.sensors}
             auxViews={merged.auxViews}
-            events={merged.events}
+            events={derivedEvents}
             activeAux={activeAux}
             onToggleAux={toggleAux}
+            onAcknowledgeEvent={(eventId) => {
+              // 事件 ID 格式 "EV-301" → 告警 ID "AL-301"
+              const alertId = `AL-${eventId.replace('EV-', '')}`
+              updateAlertStatus(alertId, 'acknowledged')
+            }}
           />
         </div>
       </div>

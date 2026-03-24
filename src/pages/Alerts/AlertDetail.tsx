@@ -6,6 +6,7 @@ import {
   ArrowUp,
   Camera,
   CheckCircle2,
+  ChevronDown,
   Clock,
   FileText,
   Minus,
@@ -17,6 +18,39 @@ import { Button } from '@/components/ui/Button'
 import { SegmentMiniMap } from './SegmentMiniMap'
 import type { AlertItem } from '@/types/dashboard'
 import type { SegmentAlertHistory } from '@/types/alerts'
+
+/* ───────── Collapsible section wrapper ───────── */
+
+function Section({
+  icon,
+  title,
+  defaultOpen = false,
+  children,
+}: {
+  icon: React.ReactNode
+  title: string
+  defaultOpen?: boolean
+  children: React.ReactNode
+}) {
+  const [open, setOpen] = useState(defaultOpen)
+  return (
+    <div className="shrink-0 border-b border-white/6">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center justify-between gap-2 px-5 py-3.5 text-left transition hover:bg-white/[0.02]"
+      >
+        <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-slate-500">
+          {icon}
+          {title}
+        </div>
+        <ChevronDown
+          className={`h-3.5 w-3.5 text-slate-500 transition-transform ${open ? 'rotate-0' : '-rotate-90'}`}
+        />
+      </button>
+      {open && <div className="px-5 pb-5">{children}</div>}
+    </div>
+  )
+}
 
 /* ───────── helpers ───────── */
 
@@ -246,33 +280,20 @@ export function AlertDetail({
       </div>
 
       {/* ===== Module 1: 关联视觉证据 ===== */}
-      <div className="shrink-0 border-b border-white/6 p-5">
-        <div className="mb-3 flex items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-slate-500">
-          <Camera className="h-3.5 w-3.5" />
-          抓拍证据
-        </div>
-        {/* 模拟隧道抓拍 — SVG 生成，根据告警类型动态变化 */}
+      <Section icon={<Camera className="h-3.5 w-3.5" />} title="抓拍证据">
         <div className="relative overflow-hidden rounded-xl border border-white/8 bg-[#060e18]">
           <CaptureSnapshot alert={alert} />
         </div>
-      </div>
+      </Section>
 
       {/* ===== Module 2: 区段定位小地图 ===== */}
-      <div className="shrink-0 border-b border-white/6 p-5">
-        <div className="mb-3 flex items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-slate-500">
-          <FileText className="h-3.5 w-3.5" />
-          区段定位
-        </div>
+      <Section icon={<FileText className="h-3.5 w-3.5" />} title="区段定位">
         <SegmentMiniMap highlightSegment={alert.segmentId} alerts={allAlerts} />
-      </div>
+      </Section>
 
       {/* ===== Module 3: 历史关联 ===== */}
       {segHistory && (
-        <div className="shrink-0 border-b border-white/6 p-5">
-          <div className="mb-3 flex items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-slate-500">
-            <Clock className="h-3.5 w-3.5" />
-            区段历史
-          </div>
+        <Section icon={<Clock className="h-3.5 w-3.5" />} title="区段历史">
           <div className="rounded-xl border border-white/8 bg-white/[0.02] p-4">
             <div className="text-sm font-medium text-white">
               {alert.segmentId} 区段近期告警
@@ -303,16 +324,11 @@ export function AlertDetail({
               </span>
             </div>
           </div>
-        </div>
+        </Section>
       )}
 
       {/* ===== Module 4: 处置操作 ===== */}
-      <div className="shrink-0 p-5">
-        <div className="mb-3 flex items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-slate-500">
-          <ShieldCheck className="h-3.5 w-3.5" />
-          处置操作
-        </div>
-
+      <Section icon={<ShieldCheck className="h-3.5 w-3.5" />} title="处置操作" defaultOpen>
         {/* 状态流转按钮 */}
         <div className="flex items-center gap-2">
           {alert.status === 'new' && (
@@ -379,7 +395,7 @@ export function AlertDetail({
             </div>
           )}
         </div>
-      </div>
+      </Section>
     </div>
   )
 }

@@ -44,6 +44,12 @@ export interface RobotOverview {
   location: string
   speedKmh: number
   temperatureC: number
+  /** 机器人当前任务状态 */
+  taskStatus: 'inspecting' | 'moving' | 'idle'
+  /** 巡检进度百分比 0-100 */
+  taskProgressPct: number
+  /** 所在区段 ID */
+  segmentId: string
 }
 
 export interface AlertItem {

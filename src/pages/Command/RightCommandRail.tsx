@@ -1,6 +1,8 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   BatteryCharging,
+  CheckCircle2,
   ChevronDown,
   Compass,
   Radio,
@@ -209,6 +211,7 @@ export function RightCommandRail({
   events,
   activeAux,
   onToggleAux,
+  onAcknowledgeEvent,
 }: {
   robot: CommandRobotState
   mission: CommandMission
@@ -217,9 +220,11 @@ export function RightCommandRail({
   events: CommandEvent[]
   activeAux: Set<string>
   onToggleAux: (id: string) => void
+  onAcknowledgeEvent?: (eventId: string) => void
 }) {
   const abnormalSensors = sensors.filter((s) => s.status !== 'normal')
   const recentEvents = events
+  const navigate = useNavigate()
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-white/8 bg-slate-950/50 backdrop-blur-xl">
@@ -242,7 +247,7 @@ export function RightCommandRail({
       {/* Scrollable panels */}
       <div className="min-h-0 flex-1 overflow-y-auto">
         {/* 1. Robot telemetry */}
-        <Panel title="遥测数据">
+        <Panel title="遥测数据" defaultOpen={false}>
           <div className="grid grid-cols-2 gap-1.5">
             <MiniStat
               icon={<BatteryCharging className="h-3 w-3 text-cyan-300" />}
@@ -276,6 +281,7 @@ export function RightCommandRail({
         {/* 2. Sensors — show abnormal first, then collapsed normal */}
         <Panel
           title="传感器"
+          defaultOpen={false}
           badge={
             abnormalSensors.length > 0 ? (
               <Badge tone="warning">{abnormalSensors.length} 异常</Badge>
@@ -310,7 +316,7 @@ export function RightCommandRail({
         </Panel>
 
         {/* 3. Segment mini-map */}
-        <Panel title="区段定位" defaultOpen={true}>
+        <Panel title="区段定位" defaultOpen={false}>
           <SegmentMiniMap
             segmentId={mission.segmentId}
             progressPct={mission.progressPct}
@@ -319,7 +325,7 @@ export function RightCommandRail({
         </Panel>
 
         {/* 4. Aux camera views — toggle buttons */}
-        <Panel title="辅助画面" defaultOpen={true}>
+        <Panel title="辅助画面" defaultOpen={false}>
           <div className="space-y-1.5">
             {auxViews.map((view) => {
               const isActive = activeAux.has(view.id)
@@ -364,8 +370,30 @@ export function RightCommandRail({
                 <div className="mt-1 line-clamp-1 text-[10px] leading-4 text-slate-400">
                   {event.detail}
                 </div>
-                <div className="mt-1 text-[10px] text-slate-500">
-                  {event.segmentId} · {new Date(event.occurredAt).toLocaleTimeString('zh-CN')}
+                <div className="mt-1.5 flex items-center justify-between">
+                  <span className="text-[10px] text-slate-500">
+                    {event.segmentId} · {new Date(event.occurredAt).toLocaleTimeString('zh-CN')}
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    {event.status === 'new' && onAcknowledgeEvent && (
+                      <button
+                        onClick={() => onAcknowledgeEvent(event.id)}
+                        className="inline-flex items-center gap-1 rounded-md border border-cyan-400/20 bg-cyan-400/8 px-1.5 py-0.5 text-[10px] font-medium text-cyan-300 transition hover:bg-cyan-400/15"
+                      >
+                        <CheckCircle2 className="h-2.5 w-2.5" />
+                        确认
+                      </button>
+                    )}
+                    {event.status === 'acknowledged' && (
+                      <span className="text-[10px] text-amber-400">已确认</span>
+                    )}
+                    <button
+                      onClick={() => navigate('/alerts')}
+                      className="rounded-md px-1.5 py-0.5 text-[10px] text-slate-500 transition hover:bg-white/6 hover:text-slate-300"
+                    >
+                      详情
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
