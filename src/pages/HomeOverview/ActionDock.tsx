@@ -4,8 +4,12 @@ import { HOME_QUICK_COMMANDS } from '@/utils/voiceIntents'
 
 export function ActionDock({
   voice,
+  quickCommands = HOME_QUICK_COMMANDS,
+  hint = '点击开始语音 · 支持暂停任务、区段聚焦、页面跳转等指令',
 }: {
   voice: UseVoiceEngineReturn
+  quickCommands?: string[]
+  hint?: string
 }) {
   const { state, startListening, stopListening, confirm, cancel, fireQuickCommand } = voice
   const isIdle = state.status === 'idle'
@@ -27,7 +31,7 @@ export function ActionDock({
           语音指令
         </button>
         <span className="ml-3 text-[11px] text-slate-600">
-          点击开始语音 · 支持暂停任务、区段聚焦、页面跳转等指令
+          {hint}
         </span>
       </div>
     )
@@ -65,7 +69,7 @@ export function ActionDock({
         {/* 快捷指令 */}
         <div className="flex flex-wrap items-center gap-1.5 rounded-2xl border border-white/6 bg-white/[0.02] px-4 py-2.5">
           <span className="mr-1 text-[11px] text-slate-500">快捷指令</span>
-          {HOME_QUICK_COMMANDS.map((cmd) => (
+          {quickCommands.map((cmd) => (
             <button
               key={cmd}
               onClick={() => fireQuickCommand(cmd)}

@@ -9,6 +9,7 @@ import { FleetPanel } from './FleetPanel'
 import { ActionDock } from './ActionDock'
 import { Button } from '@/components/ui/Button'
 import { useVoiceEngine } from '@/hooks/useVoiceEngine'
+import { useRegisterVoiceKeys } from '@/hooks/useRegisterVoiceKeys'
 import { useDashboardContext } from '@/context/DashboardContext'
 import type { VoiceIntent } from '@/utils/voiceIntents'
 
@@ -74,6 +75,7 @@ export function HomeOverviewPage() {
   )
 
   const voice = useVoiceEngine(executeVoiceCommand)
+  useRegisterVoiceKeys(voice)
 
   /* ── Loading ── */
   if (loading) {

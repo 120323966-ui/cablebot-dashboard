@@ -48,9 +48,9 @@ export function SideNav() {
       </nav>
 
       <div className="mt-auto rounded-3xl border border-white/8 bg-white/[0.03] p-4">
-        <div className="panel-eyebrow">系统说明</div>
+        <div className="panel-eyebrow">多模态交互</div>
         <p className="mt-2 text-sm leading-6 text-slate-300">
-          当前工程以首页总览为核心，已预留其余五页的路由与布局壳层，便于继续扩展完整毕业设计系统。
+          语音指令（V 键唤起）、键盘快捷键、视觉通知三通道协同，告警数据全局同步，覆盖首页、巡检、告警三大核心页面。
         </p>
       </div>
     </aside>

@@ -13,6 +13,7 @@ import {
 } from '@/hooks/useRealtimeCommandCenter'
 import { useDashboardContext } from '@/context/DashboardContext'
 import { useVoiceEngine } from '@/hooks/useVoiceEngine'
+import { useRegisterVoiceKeys } from '@/hooks/useRegisterVoiceKeys'
 import {
   registerCommandToggle,
   unregisterCommandToggle,
@@ -337,6 +338,7 @@ export function CommandPage() {
   )
 
   const voice = useVoiceEngine(executeCommandVoice)
+  useRegisterVoiceKeys(voice)
 
   /* ── Loading / Error ── */
 

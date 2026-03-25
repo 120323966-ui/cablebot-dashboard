@@ -151,6 +151,45 @@ const INTENT_RULES: IntentRule[] = [
   },
 
   // ══════════════════════════════════
+  // ── 告警处置（告警页专用） ──
+  // ══════════════════════════════════
+  {
+    keywords: ['确认告警', '确认这条', '确认当前', '标记确认'],
+    action: 'ALERT_CONFIRM',
+    label: '已确认当前告警',
+  },
+  {
+    keywords: ['关闭告警', '关闭这条', '关闭当前', '处置完成'],
+    action: 'ALERT_CLOSE',
+    label: '已关闭当前告警',
+  },
+  {
+    keywords: ['下一条', '下一个', '下一条告警', '往下'],
+    action: 'ALERT_NEXT',
+    label: '已切换到下一条',
+  },
+  {
+    keywords: ['上一条', '上一个', '上一条告警', '往上'],
+    action: 'ALERT_PREV',
+    label: '已切换到上一条',
+  },
+  {
+    keywords: ['筛选严重', '只看严重', '显示严重', 'critical'],
+    action: 'ALERT_FILTER_CRITICAL',
+    label: '已筛选严重告警',
+  },
+  {
+    keywords: ['筛选警告', '只看警告', '显示警告', 'warning'],
+    action: 'ALERT_FILTER_WARNING',
+    label: '已筛选警告告警',
+  },
+  {
+    keywords: ['清除筛选', '显示全部', '取消筛选', '重置筛选'],
+    action: 'ALERT_FILTER_CLEAR',
+    label: '已清除筛选',
+  },
+
+  // ══════════════════════════════════
   // ── 页面导航 ──
   // ══════════════════════════════════
   {
@@ -225,4 +264,15 @@ export const COMMAND_QUICK_COMMANDS = [
   '截图保存',
   '切换手动',
   '打开后视',
+]
+
+/* ── 告警页快捷指令 ── */
+
+export const ALERTS_QUICK_COMMANDS = [
+  '确认告警',
+  '关闭告警',
+  '下一条',
+  '上一条',
+  '筛选严重',
+  '清除筛选',
 ]

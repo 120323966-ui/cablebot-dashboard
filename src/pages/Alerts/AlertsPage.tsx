@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   AlertTriangle,
   CheckCircle2,
@@ -7,9 +8,14 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { useAlerts } from '@/hooks/useAlerts'
+import { useVoiceEngine } from '@/hooks/useVoiceEngine'
+import { useRegisterVoiceKeys } from '@/hooks/useRegisterVoiceKeys'
+import { ActionDock } from '@/pages/HomeOverview/ActionDock'
 import { AlertDetail } from './AlertDetail'
 import { AlertList } from './AlertList'
 import type { AlertFilters } from '@/types/alerts'
+import type { VoiceIntent } from '@/utils/voiceIntents'
+import { ALERTS_QUICK_COMMANDS } from '@/utils/voiceIntents'
 
 /* ───────── KPI Card atom ───────── */
 
@@ -41,6 +47,7 @@ function KpiCard({
 /* ───────── Main page ───────── */
 
 export function AlertsPage() {
+  const navigate = useNavigate()
   const { alerts, history, segments, loading, error, updateAlertStatus } = useAlerts()
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -51,6 +58,95 @@ export function AlertsPage() {
   })
 
   const selectedAlert = alerts.find((a) => a.id === selectedId) ?? null
+
+  /* ── 当前筛选后的列表（语音上下条需要） ── */
+  const filteredAlerts = alerts.filter((a) => {
+    if (filters.severity !== 'all' && a.severity !== filters.severity) return false
+    if (filters.status !== 'all' && a.status !== filters.status) return false
+    if (filters.segmentId !== 'all' && a.segmentId !== filters.segmentId) return false
+    return true
+  })
+
+  /* ── 语音指令执行 ── */
+  const executeAlertVoice = useCallback(
+    (intent: VoiceIntent) => {
+      switch (intent.action) {
+        // ── 确认当前告警 ──
+        case 'ALERT_CONFIRM':
+          if (selectedId) {
+            const alert = alerts.find((a) => a.id === selectedId)
+            if (alert && alert.status === 'new') {
+              updateAlertStatus(selectedId, 'acknowledged')
+            }
+          }
+          break
+
+        // ── 关闭当前告警 ──
+        case 'ALERT_CLOSE':
+          if (selectedId) {
+            const alert = alerts.find((a) => a.id === selectedId)
+            if (alert && alert.status !== 'closed') {
+              updateAlertStatus(selectedId, 'closed')
+            }
+          }
+          break
+
+        // ── 下一条 ──
+        case 'ALERT_NEXT': {
+          const currentIdx = filteredAlerts.findIndex((a) => a.id === selectedId)
+          const nextIdx = currentIdx < filteredAlerts.length - 1 ? currentIdx + 1 : 0
+          if (filteredAlerts[nextIdx]) setSelectedId(filteredAlerts[nextIdx].id)
+          break
+        }
+
+        // ── 上一条 ──
+        case 'ALERT_PREV': {
+          const currentIdx = filteredAlerts.findIndex((a) => a.id === selectedId)
+          const prevIdx = currentIdx > 0 ? currentIdx - 1 : filteredAlerts.length - 1
+          if (filteredAlerts[prevIdx]) setSelectedId(filteredAlerts[prevIdx].id)
+          break
+        }
+
+        // ── 筛选 ──
+        case 'ALERT_FILTER_CRITICAL':
+          setFilters((f) => ({ ...f, severity: 'critical' }))
+          break
+        case 'ALERT_FILTER_WARNING':
+          setFilters((f) => ({ ...f, severity: 'warning' }))
+          break
+        case 'ALERT_FILTER_CLEAR':
+          setFilters({ severity: 'all', status: 'all', segmentId: 'all' })
+          break
+
+        // ── 页面导航（复用已有指令） ──
+        case 'NAV_COMMAND':
+          navigate('/command')
+          break
+        case 'NAV_SPATIAL':
+          navigate('/spatial')
+          break
+        case 'NAV_REPORTS':
+          navigate('/reports')
+          break
+        case 'NAV_HISTORY':
+          navigate('/history')
+          break
+        case 'NAV_HOME':
+          navigate('/overview')
+          break
+        case 'FOCUS_SEGMENT':
+          if (intent.param) navigate(`/spatial?segment=${intent.param}`)
+          break
+
+        default:
+          break
+      }
+    },
+    [selectedId, alerts, filteredAlerts, updateAlertStatus, navigate],
+  )
+
+  const voice = useVoiceEngine(executeAlertVoice)
+  useRegisterVoiceKeys(voice)
 
   /* ---- KPI counts ---- */
   const pendingCount = alerts.filter((a) => a.status === 'new').length
@@ -154,6 +250,15 @@ export function AlertsPage() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* ===== Voice Dock ===== */}
+      <div className="shrink-0">
+        <ActionDock
+          voice={voice}
+          quickCommands={ALERTS_QUICK_COMMANDS}
+          hint="点击开始语音 · 支持确认告警、上下条切换、筛选等指令"
+        />
       </div>
     </div>
   )
