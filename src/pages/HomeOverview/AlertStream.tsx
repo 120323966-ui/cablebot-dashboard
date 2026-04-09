@@ -80,6 +80,7 @@ export function AlertStream({ alerts }: { alerts: AlertItem[] }) {
           return (
             <button
               key={alert.id}
+              onClick={() => navigate(`/alerts?id=${alert.id}`)}
               className="group flex w-full items-start gap-3 rounded-xl border border-white/6 bg-white/[0.02] p-3 text-left transition hover:border-cyan-400/18 hover:bg-white/[0.04]"
             >
               <div className={`mt-0.5 shrink-0 rounded-lg p-1.5 ${cfg.iconBg}`}>

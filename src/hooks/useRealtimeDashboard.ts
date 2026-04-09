@@ -1,6 +1,5 @@
 import { useEffect, useRef } from 'react'
 import { createRealtimeAlert } from '@/mocks/data/dashboardHome'
-import { announceAlert } from '@/utils/voiceAudio'
 import type { ActiveTask, HomeOverviewResponse, RealtimeMessage } from '@/types/dashboard'
 
 function rand(min: number, max: number) {
@@ -59,12 +58,8 @@ export function applyRealtime(
         )
         .slice(0, 10)
 
-      // TTS 播报新告警（critical / warning）
-      announceAlert(
-        message.payload.title,
-        message.payload.severity,
-        message.payload.segmentId,
-      )
+      // TTS 播报已移至 DashboardContext 的 handleMessage 中，
+      // 由重复告警抑制逻辑统一管控，此处不再调用 announceAlert。
 
       return {
         ...data,

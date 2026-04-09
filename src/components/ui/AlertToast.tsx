@@ -85,6 +85,7 @@ export function AlertToast({
 
   const cfg = severityConfig[alert.severity]
   const SevIcon = cfg.icon
+  const repeatCount = alert.repeatCount ?? 1
 
   return (
     <div
@@ -115,11 +116,16 @@ export function AlertToast({
               }`}>
                 {cfg.label}
               </span>
+              {repeatCount > 1 && (
+                <span className="shrink-0 rounded-md bg-white/[0.08] px-1.5 py-0.5 text-[10px] font-medium text-slate-300">
+                  ×{repeatCount}
+                </span>
+              )}
             </div>
             <div className="mt-1 flex items-center gap-1.5 text-xs text-slate-400">
               <span className="font-medium text-slate-300">{alert.segmentId}</span>
               <span>·</span>
-              <span className="truncate">{alert.evidence}</span>
+              <span className="truncate">{alert.latestEvidence ?? alert.evidence}</span>
             </div>
             <div className="mt-0.5 text-[11px] text-slate-500">点击查看详情</div>
           </button>

@@ -1,5 +1,5 @@
-import { useCallback, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useCallback, useEffect, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   AlertTriangle,
   CheckCircle2,
@@ -48,6 +48,7 @@ function KpiCard({
 
 export function AlertsPage() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { alerts, history, segments, loading, error, updateAlertStatus } = useAlerts()
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -56,6 +57,19 @@ export function AlertsPage() {
     status: 'all',
     segmentId: 'all',
   })
+
+  /* ── 从 URL 参数读取初始选中告警 ── */
+  useEffect(() => {
+    const idFromUrl = searchParams.get('id')
+    if (idFromUrl && alerts.length > 0) {
+      const found = alerts.find((a) => a.id === idFromUrl)
+      if (found) {
+        setSelectedId(idFromUrl)
+        // 读取后清除 URL 参数，避免后续刷新时重复选中
+        setSearchParams({}, { replace: true })
+      }
+    }
+  }, [searchParams, alerts, setSearchParams])
 
   const selectedAlert = alerts.find((a) => a.id === selectedId) ?? null
 

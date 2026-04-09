@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, Filter, XCircle } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Filter, Repeat, XCircle } from 'lucide-react'
 import { Badge } from '@/components/ui/Badge'
 import type { AlertItem, Severity } from '@/types/dashboard'
 import type { AlertFilters } from '@/types/alerts'
@@ -56,6 +56,17 @@ function Chip({
         </span>
       )}
     </button>
+  )
+}
+
+/* ───────── Repeat count badge ───────── */
+
+function RepeatBadge({ count }: { count: number }) {
+  return (
+    <span className="inline-flex items-center gap-0.5 rounded-md bg-white/[0.06] px-1.5 py-0.5 text-[10px] font-medium text-slate-300">
+      <Repeat className="h-2.5 w-2.5 text-slate-400" />
+      ×{count}
+    </span>
   )
 }
 
@@ -139,6 +150,10 @@ export function AlertList({
           {filtered.map((alert) => {
             const isSelected = alert.id === selectedId
             const isNew = alert.status === 'new' && alert.severity === 'critical'
+            const repeatCount = alert.repeatCount ?? 1
+            const displayEvidence = alert.latestEvidence ?? alert.evidence
+            const displayTime = alert.latestOccurredAt ?? alert.occurredAt
+
             return (
               <button
                 key={alert.id}
@@ -155,13 +170,20 @@ export function AlertList({
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className="text-sm font-medium text-white">{alert.title}</span>
                     <Badge tone={toneOf(alert.severity)}>{alert.severity}</Badge>
+                    {repeatCount > 1 && <RepeatBadge count={repeatCount} />}
                   </div>
                   <div className="mt-1.5 flex items-center gap-2 text-[11px] text-slate-500">
                     <span>{alert.segmentId}</span>
                     <span>·</span>
-                    <span>{relativeTime(alert.occurredAt)}</span>
+                    <span>{relativeTime(displayTime)}</span>
                     <span>·</span>
-                    <span>{alert.evidence}</span>
+                    <span>{displayEvidence}</span>
+                    {repeatCount > 1 && (
+                      <>
+                        <span>·</span>
+                        <span className="text-slate-400">累计 {repeatCount} 次</span>
+                      </>
+                    )}
                   </div>
                 </div>
               </button>

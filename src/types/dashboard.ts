@@ -61,6 +61,17 @@ export interface AlertItem {
   occurredAt: string
   evidence: string
   value: string
+
+  /* ── 重复告警归并字段（可选，仅实时告警填充） ── */
+
+  /** 关联标识，由 "区段::标题" 拼接，用于重复告警判定 */
+  groupKey?: string
+  /** 归并次数，默认为 1（首次出现） */
+  repeatCount?: number
+  /** 归并后的最新检测证据 */
+  latestEvidence?: string
+  /** 归并后的最新发生时间 */
+  latestOccurredAt?: string
 }
 
 export interface HeatCell {

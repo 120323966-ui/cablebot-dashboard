@@ -32,6 +32,8 @@ export interface ActiveAlert {
   type: string
   /** 0-1 position along the segment pipe (for Spatial map markers) */
   progress: number
+  /** 关联标识，用于重复告警归并 */
+  groupKey?: string
 }
 
 export interface RobotSnapshot {
@@ -212,6 +214,10 @@ const REALTIME_TEMPLATES: { title: string; severity: 'critical' | 'warning' | 'i
 export function createRealtimeAlert(): ActiveAlert {
   const tpl = REALTIME_TEMPLATES[Math.floor(Math.random() * REALTIME_TEMPLATES.length)]
   realtimeSeq++
+
+  // 生成关联标识：区段 + 标题，用于下游重复告警归并
+  const groupKey = `${tpl.segment}::${tpl.title}`
+
   return {
     id: `AL-${realtimeSeq}`,
     title: tpl.title,
@@ -223,6 +229,7 @@ export function createRealtimeAlert(): ActiveAlert {
     value: tpl.value,
     type: SEG_ALERT_POOL[tpl.segment]?.[0] ?? '热像异常',
     progress: Number(rand(0.1, 0.9).toFixed(2)),
+    groupKey,
   }
 }
 
