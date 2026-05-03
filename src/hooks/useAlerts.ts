@@ -5,7 +5,7 @@
  * 这样首页、告警页、Command 页看到同一份告警，状态修改全局同步。
  */
 
-import { useDashboardContext } from '@/context/DashboardContext'
+import { useDashboardContext } from '@/context/useDashboardContext'
 import type { AlertItem } from '@/types/dashboard'
 
 export function useAlerts() {

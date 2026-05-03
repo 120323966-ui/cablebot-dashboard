@@ -89,6 +89,7 @@ export function useRealtimeDashboard(
   onMessage: (message: RealtimeMessage) => void,
 ) {
   const dataRef = useRef<HomeOverviewResponse | null>(data)
+  const hasData = Boolean(data)
 
   useEffect(() => {
     dataRef.current = data
@@ -183,5 +184,5 @@ export function useRealtimeDashboard(
       window.clearInterval(liveTimer)
       window.clearInterval(alertTimer)
     }
-  }, [onMessage, Boolean(data)])
+  }, [onMessage, hasData])
 }

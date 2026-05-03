@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import {
-  AlertTriangle,
   ArrowDown,
   ArrowRight,
   ArrowUp,
@@ -9,13 +8,17 @@ import {
   ChevronDown,
   Clock,
   FileText,
+  Gauge,
   Minus,
   ShieldCheck,
   XCircle,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
+import { AlertGradingBasis } from './AlertGradingBasis'
+import { MultiSourceJudgmentCard } from './MultiSourceJudgmentCard'
 import { SegmentMiniMap } from './SegmentMiniMap'
+import { buildAIJudgment } from '@/utils/aiJudgment'
 import type { AlertItem } from '@/types/dashboard'
 import type { SegmentAlertHistory } from '@/types/alerts'
 
@@ -176,7 +179,6 @@ function CaptureSnapshot({ alert }: { alert: AlertItem }) {
 
       {/* Cable fault recolor at anomaly (3 cables along the wall) */}
       {cfg.type === 'thermal' && [-6, 0, 6].map((dy, i) => {
-        const len = 40 * scale
         const x1 = wallNearX + (wallFarX - wallNearX) * (depth - 0.12)
         const y1base = trayNearY + dy + (farY + dy * 0.3 - trayNearY - dy) * (depth - 0.12)
         const x2 = wallNearX + (wallFarX - wallNearX) * (depth + 0.12)
@@ -240,6 +242,7 @@ export function AlertDetail({
   const [notes, setNotes] = useState<{ text: string; time: string }[]>([])
 
   const segHistory = history.find((h) => h.segmentId === alert.segmentId)
+  const judgment = buildAIJudgment(alert, allAlerts)
 
   const handleAddNote = () => {
     if (!note.trim()) return
@@ -278,6 +281,15 @@ export function AlertDetail({
           <div className="text-white">{alert.value}</div>
         </div>
       </div>
+
+      {/* ===== Module 1: 分级依据 ===== */}
+      <Section icon={<Gauge className="h-3.5 w-3.5" />} title="分级依据" defaultOpen>
+        <AlertGradingBasis
+          alert={alert}
+          allAlerts={allAlerts}
+          history={segHistory}
+        />
+      </Section>
 
       {/* ===== Module 1: 关联视觉证据 ===== */}
       <Section icon={<Camera className="h-3.5 w-3.5" />} title="抓拍证据">
@@ -329,8 +341,15 @@ export function AlertDetail({
 
       {/* ===== Module 4: 处置操作 ===== */}
       <Section icon={<ShieldCheck className="h-3.5 w-3.5" />} title="处置操作" defaultOpen>
+        <MultiSourceJudgmentCard
+          judgment={judgment}
+          onAdopt={(item) => {
+            setNote(`AI辅助研判：${item.summary}`)
+          }}
+        />
+
         {/* 状态流转按钮 */}
-        <div className="flex items-center gap-2">
+        <div className="mt-4 flex items-center gap-2">
           {alert.status === 'new' && (
             <Button
               variant="primary"

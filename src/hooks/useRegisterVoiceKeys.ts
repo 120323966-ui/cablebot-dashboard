@@ -11,7 +11,10 @@ import { registerVoiceActions, unregisterVoiceActions } from '@/hooks/useKeyboar
 
 export function useRegisterVoiceKeys(voice: UseVoiceEngineReturn) {
   const statusRef = useRef(voice.state.status)
-  statusRef.current = voice.state.status
+
+  useEffect(() => {
+    statusRef.current = voice.state.status
+  }, [voice.state.status])
 
   useEffect(() => {
     registerVoiceActions({

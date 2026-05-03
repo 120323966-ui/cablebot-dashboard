@@ -8,6 +8,7 @@ import { SEGMENTS } from './constants'
 import {
   getActiveAlerts, getRawAlerts, createRealtimeAlert as sharedRealtimeAlert,
 } from './sharedSeed'
+import type { ActiveAlert } from './sharedSeed'
 
 /* ── Derive segment history stats from 30-day rawAlerts ── */
 
@@ -38,6 +39,25 @@ function deriveHistory(): SegmentAlertHistory[] {
   })
 }
 
+function toAlertItem(alert: ActiveAlert): AlertItem {
+  return {
+    id: alert.id,
+    title: alert.title,
+    severity: alert.severity,
+    status: alert.status,
+    segmentId: alert.segmentId,
+    occurredAt: alert.occurredAt,
+    evidence: alert.evidence,
+    value: alert.value,
+    type: alert.type,
+    currentValue: alert.currentValue,
+    unit: alert.unit,
+    threshold: alert.threshold,
+    recentTrend: alert.recentTrend,
+    groupKey: alert.groupKey,
+  }
+}
+
 /* ═══════════════════════════════════════════════════
    Public API
    ═══════════════════════════════════════════════════ */
@@ -45,8 +65,7 @@ function deriveHistory(): SegmentAlertHistory[] {
 export function createAlertsPageMock(): AlertsPageResponse {
   const activeAlerts = getActiveAlerts()
 
-  // Map ActiveAlert → AlertItem (drop type & progress)
-  const alerts: AlertItem[] = activeAlerts.map(({ type, progress, ...rest }) => rest)
+  const alerts: AlertItem[] = activeAlerts.map(toAlertItem)
 
   return {
     alerts,
@@ -57,6 +76,5 @@ export function createAlertsPageMock(): AlertsPageResponse {
 
 /** Realtime alert for Alerts page — shared generator, mapped to AlertItem */
 export function createRealtimeAlertForPage(): AlertItem {
-  const { type, progress, ...rest } = sharedRealtimeAlert()
-  return rest
+  return toAlertItem(sharedRealtimeAlert())
 }

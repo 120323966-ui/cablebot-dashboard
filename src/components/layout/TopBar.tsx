@@ -1,10 +1,51 @@
-import { Bell, CloudRain, Keyboard, Search, ShieldCheck, Volume2, VolumeX, Wifi } from 'lucide-react'
+import { Bell, Keyboard, Search, ShieldCheck, Volume2, VolumeX, Wifi } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { isVoiceMuted, setVoiceMuted } from '@/utils/voiceAudio'
-import { useDashboardContext } from '@/context/DashboardContext'
+import { useDashboardContext } from '@/context/useDashboardContext'
 import { AlertToast } from '@/components/ui/AlertToast'
 import { SHORTCUT_LIST } from '@/hooks/useKeyboardShortcuts'
+import type { ControlAuthority } from '@/context/dashboardContextCore'
+
+function NetworkStatusBadge({
+  network,
+}: {
+  network?: { status: 'ok' | 'degraded'; latencyMs: number }
+}) {
+  const latency = network?.latencyMs ?? 0
+  const degraded = !network || network.status === 'degraded' || latency > 220
+  const label = !network
+    ? '通信未知'
+    : degraded
+      ? `高延迟 ${latency}ms`
+      : `通信正常 ${latency}ms`
+
+  return (
+    <div className="hidden items-center gap-2 rounded-2xl border border-white/8 bg-white/[0.04] px-4 py-2 text-sm text-slate-300 xl:flex">
+      <span className={`h-2 w-2 rounded-full ${degraded ? 'bg-amber-400 shadow-[0_0_10px_rgba(251,191,36,0.45)]' : 'bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.45)]'}`} />
+      <Wifi className={`h-4 w-4 ${degraded ? 'text-amber-300' : 'text-emerald-300'}`} />
+      {label}
+    </div>
+  )
+}
+
+function ControlAuthorityBadge({ authority }: { authority: ControlAuthority }) {
+  const config: Record<ControlAuthority, { label: string; dot: string; text: string }> = {
+    auto: { label: '自动', dot: 'bg-emerald-400', text: 'text-emerald-200' },
+    'semi-auto': { label: '半自动', dot: 'bg-cyan-400', text: 'text-cyan-200' },
+    manual: { label: '人工接管', dot: 'bg-amber-400', text: 'text-amber-200' },
+    emergency: { label: '已急停', dot: 'bg-rose-400', text: 'text-rose-200' },
+  }
+  const item = config[authority]
+
+  return (
+    <div className="hidden items-center gap-2 rounded-2xl border border-white/8 bg-white/[0.04] px-4 py-2 text-sm text-slate-300 xl:flex">
+      <span className={`h-2 w-2 rounded-full ${item.dot}`} />
+      <ShieldCheck className={`h-4 w-4 ${item.text}`} />
+      <span className={item.text}>{item.label}</span>
+    </div>
+  )
+}
 
 export function TopBar() {
   const navigate = useNavigate()
@@ -12,7 +53,7 @@ export function TopBar() {
   const [muted, setMuted] = useState(isVoiceMuted())
   const [showShortcuts, setShowShortcuts] = useState(false)
   const shortcutRef = useRef<HTMLDivElement>(null)
-  const { alerts, latestNewAlert, dismissLatestAlert } = useDashboardContext()
+  const { data, alerts, latestNewAlert, dismissLatestAlert, controlAuthority } = useDashboardContext()
 
   /* ── 待处置告警计数（角标用） ── */
   const pendingCount = alerts.filter((a) => a.status === 'new').length
@@ -63,14 +104,8 @@ export function TopBar() {
               placeholder="搜索区段 / 设备 / 告警"
             />
           </label>
-          <div className="hidden items-center gap-2 rounded-2xl border border-white/8 bg-white/[0.04] px-4 py-2 text-sm text-slate-300 xl:flex">
-            <CloudRain className="h-4 w-4 text-cyan-300" />
-            小雨后巡检
-          </div>
-          <div className="hidden items-center gap-2 rounded-2xl border border-white/8 bg-white/[0.04] px-4 py-2 text-sm text-slate-300 xl:flex">
-            <ShieldCheck className="h-4 w-4 text-emerald-300" />
-            安全策略已启用
-          </div>
+          <NetworkStatusBadge network={data?.meta.network} />
+          <ControlAuthorityBadge authority={controlAuthority} />
 
           {/* 语音播报静音开关 */}
           <button

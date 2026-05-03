@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   AlertTriangle,
@@ -48,29 +48,19 @@ function KpiCard({
 
 export function AlertsPage() {
   const navigate = useNavigate()
-  const [searchParams, setSearchParams] = useSearchParams()
+  const [searchParams] = useSearchParams()
   const { alerts, history, segments, loading, error, updateAlertStatus } = useAlerts()
 
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [manualSelectedId, setManualSelectedId] = useState<string | null>(null)
   const [filters, setFilters] = useState<AlertFilters>({
     severity: 'all',
     status: 'all',
     segmentId: 'all',
   })
 
-  /* ── 从 URL 参数读取初始选中告警 ── */
-  useEffect(() => {
-    const idFromUrl = searchParams.get('id')
-    if (idFromUrl && alerts.length > 0) {
-      const found = alerts.find((a) => a.id === idFromUrl)
-      if (found) {
-        setSelectedId(idFromUrl)
-        // 读取后清除 URL 参数，避免后续刷新时重复选中
-        setSearchParams({}, { replace: true })
-      }
-    }
-  }, [searchParams, alerts, setSearchParams])
-
+  const idFromUrl = searchParams.get('id')
+  const urlSelectedId = idFromUrl && alerts.some((a) => a.id === idFromUrl) ? idFromUrl : null
+  const selectedId = manualSelectedId ?? urlSelectedId
   const selectedAlert = alerts.find((a) => a.id === selectedId) ?? null
 
   /* ── 当前筛选后的列表（语音上下条需要） ── */
@@ -109,7 +99,7 @@ export function AlertsPage() {
         case 'ALERT_NEXT': {
           const currentIdx = filteredAlerts.findIndex((a) => a.id === selectedId)
           const nextIdx = currentIdx < filteredAlerts.length - 1 ? currentIdx + 1 : 0
-          if (filteredAlerts[nextIdx]) setSelectedId(filteredAlerts[nextIdx].id)
+          if (filteredAlerts[nextIdx]) setManualSelectedId(filteredAlerts[nextIdx].id)
           break
         }
 
@@ -117,7 +107,7 @@ export function AlertsPage() {
         case 'ALERT_PREV': {
           const currentIdx = filteredAlerts.findIndex((a) => a.id === selectedId)
           const prevIdx = currentIdx > 0 ? currentIdx - 1 : filteredAlerts.length - 1
-          if (filteredAlerts[prevIdx]) setSelectedId(filteredAlerts[prevIdx].id)
+          if (filteredAlerts[prevIdx]) setManualSelectedId(filteredAlerts[prevIdx].id)
           break
         }
 
@@ -238,7 +228,7 @@ export function AlertsPage() {
             filters={filters}
             selectedId={selectedId}
             onFiltersChange={setFilters}
-            onSelect={setSelectedId}
+            onSelect={setManualSelectedId}
           />
         </div>
 

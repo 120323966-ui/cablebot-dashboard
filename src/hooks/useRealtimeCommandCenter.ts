@@ -91,6 +91,7 @@ export function useRealtimeCommandCenter(
   onMessage: (message: CommandRealtimeMessage) => void,
 ) {
   const dataRef = useRef<CommandCenterResponse | null>(data)
+  const hasData = Boolean(data)
 
   useEffect(() => {
     dataRef.current = data
@@ -190,5 +191,5 @@ export function useRealtimeCommandCenter(
       window.clearInterval(pulseTimer)
       window.clearInterval(voiceTimer)
     }
-  }, [onMessage, Boolean(data)])
+  }, [onMessage, hasData])
 }

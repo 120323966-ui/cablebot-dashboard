@@ -1,14 +1,20 @@
 import {
   AlertTriangle,
+  ArrowDownToLine,
+  ArrowUpFromLine,
   Battery,
+  Box,
   Clock,
   Crosshair,
+  EyeOff,
   Gauge,
+  GitBranch,
   MapPin,
   Thermometer,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/Badge'
-import type { PipeAlert, PipeSegment, RobotOnMap } from '@/types/spatial'
+import type { PipeAlert, PipeSegment, PropagationChain, PropagationLink, RobotOnMap } from '@/types/spatial'
+import { getAlertTypeLabel, getPropagationDirectionLabel } from '@/utils/propagation'
 
 /* ───────── helpers ───────── */
 
@@ -41,21 +47,98 @@ function alertTone(severity: PipeAlert['severity']) {
   return 'neutral' as const
 }
 
+/* ───────── Propagation link row ───────── */
+
+function PropagationLinkRow({
+  link,
+  variant,
+  onClick,
+}: {
+  link: PropagationLink
+  variant: 'related' | 'inferred'
+  onClick?: () => void
+}) {
+  const isRelated = variant === 'related'
+  const tone = isRelated && link.severity ? alertTone(link.severity) : 'neutral'
+  const dirIcon = link.direction === 'downstream'
+    ? <ArrowDownToLine className="h-3 w-3" />
+    : <ArrowUpFromLine className="h-3 w-3" />
+
+  return (
+    <button
+      onClick={onClick}
+      disabled={!onClick}
+      className={`group flex w-full items-center gap-2 rounded-xl border px-3 py-2 text-left transition ${
+        isRelated
+          ? 'border-violet-400/20 bg-violet-400/[0.04] hover:border-violet-400/35 hover:bg-violet-400/[0.08]'
+          : 'border-white/6 bg-white/[0.02] opacity-75'
+      } ${onClick ? 'cursor-pointer' : 'cursor-default'}`}
+    >
+      <span className={`shrink-0 ${isRelated ? 'text-violet-300' : 'text-slate-500'}`}>
+        {dirIcon}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5">
+          <span className="text-sm font-medium text-white">{link.segmentId}</span>
+          <span className="text-[10px] text-slate-500">
+            {link.direction === 'downstream' ? '下游' : '上游'} · {link.hopDistance} 跳
+          </span>
+        </div>
+        {!isRelated && (
+          <div className="mt-0.5 text-[10px] text-slate-500">推测影响范围,暂无同类告警</div>
+        )}
+      </div>
+      {isRelated && link.severity && (
+        <Badge tone={tone}>{link.severity}</Badge>
+      )}
+    </button>
+  )
+}
+
 /* ───────── Component ───────── */
 
 export function SpatialInfoPanel({
   segment,
   alerts,
   robots,
+  propagationChain,
+  pointCloudVisible,
   onAlertClick,
+  onOpenPointCloud,
+  onClosePointCloud,
 }: {
   segment: PipeSegment
   alerts: PipeAlert[]
   robots: RobotOnMap[]
+  propagationChain: PropagationChain | null
+  /** 三维剖面视图当前是否显示 */
+  pointCloudVisible?: boolean
   onAlertClick?: (alertId: string) => void
+  /** 打开三维剖面视图 */
+  onOpenPointCloud?: () => void
+  /** 关闭三维剖面视图 */
+  onClosePointCloud?: () => void
 }) {
-  const segAlerts = alerts.filter((a) => a.segmentId === segment.id)
+  const segAlerts = alerts.filter((a) => a.segmentId === segment.id && a.status !== 'closed')
   const segRobots = robots.filter((r) => r.segmentId === segment.id)
+
+  /* 传播链激活时,把上下游分组,给侧栏渲染做准备 */
+  const propGroups = propagationChain ? {
+    upstream: propagationChain.related.filter((l) => l.direction === 'upstream'),
+    downstream: propagationChain.related.filter((l) => l.direction === 'downstream'),
+    inferredUpstream: propagationChain.inferred.filter((l) => l.direction === 'upstream'),
+    inferredDownstream: propagationChain.inferred.filter((l) => l.direction === 'downstream'),
+  } : null
+
+  /* 机器人是否在传播链上(用于风险提示) */
+  const robotOnChain = propagationChain
+    ? robots.find((r) => {
+        if (r.status === 'idle') return false
+        if (r.segmentId === propagationChain.originSegmentId) return true
+        return propagationChain.related.some((l) => l.segmentId === r.segmentId)
+            || propagationChain.inferred.some((l) => l.segmentId === r.segmentId)
+      })
+    : null
 
   return (
     <div className="flex h-full flex-col overflow-y-auto">
@@ -64,11 +147,165 @@ export function SpatialInfoPanel({
         <div className="flex items-center gap-2">
           <span className="text-lg font-semibold text-white">{segment.id} 区段</span>
           <Badge tone={riskTone(segment.riskLevel)}>{riskLabel(segment.riskLevel)}</Badge>
+          {propagationChain?.originSegmentId === segment.id && (
+            <Badge tone="neutral">
+              <span className="text-violet-300">传播链起点</span>
+            </Badge>
+          )}
         </div>
         <div className="mt-1 text-xs text-slate-500">
           长度 {segment.length}m · 最近巡检 {relativeTime(segment.lastInspected)}
         </div>
+
+        {/* ── 三维剖面视图开关 ── */}
+        {(onOpenPointCloud || onClosePointCloud) && (
+          <button
+            onClick={pointCloudVisible ? onClosePointCloud : onOpenPointCloud}
+            className={`mt-3 flex w-full items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition ${
+              pointCloudVisible
+                ? 'border-cyan-400/30 bg-cyan-400/[0.08] text-cyan-200 hover:bg-cyan-400/[0.12]'
+                : 'border-white/10 bg-white/[0.03] text-slate-300 hover:border-cyan-400/25 hover:bg-cyan-400/[0.05] hover:text-white'
+            }`}
+          >
+            {pointCloudVisible ? (
+              <>
+                <EyeOff className="h-4 w-4" />
+                关闭三维剖面
+              </>
+            ) : (
+              <>
+                <Box className="h-4 w-4" />
+                查看三维剖面
+              </>
+            )}
+          </button>
+        )}
       </div>
+
+      {/* ═══════════════════════════════════════════
+          拓扑传播链 — 论文 5.4 节核心信息组
+         ═══════════════════════════════════════════ */}
+      {propagationChain && propGroups && (
+        <div className="shrink-0 border-b border-white/6 bg-violet-400/[0.02] p-5">
+          <div className="mb-3 flex items-center justify-between">
+            <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-violet-300">
+              <GitBranch className="h-3 w-3" />
+              拓扑传播链
+            </div>
+            <span className="text-[10px] text-slate-500">
+              {getPropagationDirectionLabel(propagationChain.direction)}
+            </span>
+          </div>
+
+          <div className="rounded-xl border border-violet-400/15 bg-violet-400/[0.05] px-3 py-2">
+            <div className="text-[11px] text-slate-400">异常类型</div>
+            <div className="mt-0.5 text-sm font-medium text-white">
+              {getAlertTypeLabel(propagationChain.alertType)}
+            </div>
+          </div>
+
+          {/* 机器人在风险路径上的提示 */}
+          {robotOnChain && (
+            <div className="mt-3 rounded-xl border border-amber-400/25 bg-amber-400/[0.06] px-3 py-2">
+              <div className="flex items-center gap-1.5 text-[11px] text-amber-300">
+                <AlertTriangle className="h-3 w-3" />
+                {robotOnChain.name} 当前位于传播链上
+              </div>
+              <div className="mt-0.5 text-[10px] text-slate-400">
+                建议在告警处置页查看行进策略
+              </div>
+            </div>
+          )}
+
+          {/* 上游关联 */}
+          {(propagationChain.direction === 'both' || propagationChain.direction === 'upstream') && (
+            <div className="mt-3">
+              <div className="mb-1.5 flex items-center justify-between">
+                <span className="text-[10px] text-slate-500">上游关联</span>
+                <span className="text-[10px] text-slate-600">
+                  {propGroups.upstream.length} 段
+                </span>
+              </div>
+              {propGroups.upstream.length > 0 ? (
+                <div className="space-y-1.5">
+                  {propGroups.upstream.map((link) => (
+                    <PropagationLinkRow
+                      key={`up-rel-${link.segmentId}`}
+                      link={link}
+                      variant="related"
+                      onClick={link.alertId && onAlertClick
+                        ? () => onAlertClick(link.alertId!)
+                        : undefined}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-lg border border-white/4 bg-white/[0.01] px-3 py-2 text-[10px] text-slate-600">
+                  上游 {propGroups.inferredUpstream.length > 0 ? '暂无同类告警' : '无可追溯区段'}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 下游关联 */}
+          {(propagationChain.direction === 'both' || propagationChain.direction === 'downstream') && (
+            <div className="mt-3">
+              <div className="mb-1.5 flex items-center justify-between">
+                <span className="text-[10px] text-slate-500">下游关联</span>
+                <span className="text-[10px] text-slate-600">
+                  {propGroups.downstream.length} 段
+                </span>
+              </div>
+              {propGroups.downstream.length > 0 ? (
+                <div className="space-y-1.5">
+                  {propGroups.downstream.map((link) => (
+                    <PropagationLinkRow
+                      key={`down-rel-${link.segmentId}`}
+                      link={link}
+                      variant="related"
+                      onClick={link.alertId && onAlertClick
+                        ? () => onAlertClick(link.alertId!)
+                        : undefined}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-lg border border-white/4 bg-white/[0.01] px-3 py-2 text-[10px] text-slate-600">
+                  下游 {propGroups.inferredDownstream.length > 0 ? '暂无同类告警' : '无可追溯区段'}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 推测影响范围 */}
+          {propagationChain.inferred.length > 0 && (
+            <div className="mt-3">
+              <div className="mb-1.5 flex items-center justify-between">
+                <span className="text-[10px] text-slate-500">推测影响范围</span>
+                <span className="text-[10px] text-slate-600">
+                  {propagationChain.inferred.length} 段
+                </span>
+              </div>
+              <div className="space-y-1.5">
+                {propagationChain.inferred.map((link) => (
+                  <PropagationLinkRow
+                    key={`inf-${link.segmentId}`}
+                    link={link}
+                    variant="inferred"
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* direction === 'none' 时的提示 */}
+          {propagationChain.direction === 'none' && (
+            <div className="mt-3 rounded-lg border border-white/4 bg-white/[0.02] px-3 py-2 text-[10px] text-slate-500">
+              该类型异常仅在本段产生影响,不向上下游传播。
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── Environment data ── */}
       <div className="shrink-0 border-b border-white/6 p-5">
@@ -161,7 +398,12 @@ export function SpatialInfoPanel({
                 }`} />
                 <div className="min-w-0 flex-1">
                   <div className="text-sm text-white">{a.label}</div>
-                  <div className="text-[10px] text-slate-500">位置 {(a.progress * 100).toFixed(0)}%</div>
+                  <div className="text-[10px] text-slate-500">
+                    位置 {(a.progress * 100).toFixed(0)}%
+                    {propagationChain?.originAlertId === a.id && (
+                      <span className="ml-1.5 text-violet-300">· 当前传播链起点</span>
+                    )}
+                  </div>
                 </div>
                 <Crosshair className="h-3.5 w-3.5 shrink-0 text-slate-600 transition group-hover:text-cyan-400" />
                 <Badge tone={alertTone(a.severity)}>{a.severity}</Badge>

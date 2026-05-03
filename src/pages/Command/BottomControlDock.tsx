@@ -9,10 +9,11 @@ import {
   Pause,
   Power,
   ScanLine,
+  ShieldCheck,
   Video,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/Badge'
-import type { CommandMode, ControlState } from '@/types/command'
+import type { CommandMode, ControlState, MissionStatus } from '@/types/command'
 
 const modeLabels: Record<CommandMode, string> = {
   auto: '自动',
@@ -30,19 +31,24 @@ function Chip({
   active = false,
   highlight = false,
   className = '',
+  disabled = false,
   onClick,
 }: {
   children: React.ReactNode
   active?: boolean
   highlight?: boolean
   className?: string
+  disabled?: boolean
   onClick?: () => void
 }) {
   return (
     <button
       onClick={onClick}
+      disabled={disabled}
       className={`inline-flex h-9 items-center justify-center rounded-xl border px-3 text-[12px] font-medium leading-none whitespace-nowrap transition-all duration-300 ${
-        active
+        disabled
+          ? 'cursor-not-allowed border-white/6 bg-white/[0.02] text-slate-600 opacity-55'
+          : active
           ? 'border-cyan-400/30 bg-cyan-400/12 text-white'
           : 'border-white/8 bg-white/[0.04] text-slate-300 hover:border-cyan-400/18 hover:bg-white/[0.06] hover:text-white'
       } ${highlight ? HIGHLIGHT_RING : ''} ${className}`}
@@ -54,15 +60,22 @@ function Chip({
 
 function IconBtn({
   children,
+  disabled = false,
   onClick,
 }: {
   children: React.ReactNode
+  disabled?: boolean
   onClick?: () => void
 }) {
   return (
     <button
       onClick={onClick}
-      className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-white/8 bg-white/[0.04] text-slate-300 transition hover:border-cyan-400/18 hover:bg-white/[0.06] hover:text-white"
+      disabled={disabled}
+      className={`inline-flex h-10 w-10 items-center justify-center rounded-xl border transition ${
+        disabled
+          ? 'cursor-not-allowed border-white/6 bg-white/[0.02] text-slate-600 opacity-55'
+          : 'border-white/8 bg-white/[0.04] text-slate-300 hover:border-cyan-400/18 hover:bg-white/[0.06] hover:text-white'
+      }`}
     >
       {children}
     </button>
@@ -86,7 +99,7 @@ export function BottomControlDock({
   onVoice,
 }: {
   control: ControlState
-  missionStatus: 'running' | 'paused' | 'attention'
+  missionStatus: MissionStatus
   voiceActive: boolean
   /** 最近一次语音操作的控件 key，用于短暂高亮 */
   highlightKey?: string | null
@@ -97,6 +110,8 @@ export function BottomControlDock({
 }) {
   const isPaused = missionStatus === 'paused'
   const isStopped = missionStatus === 'attention'
+  const isManual = control.driveMode === 'manual'
+  const motionDisabled = !isManual || isStopped
   const hl = (key: string) => highlightKey === key
 
   return (
@@ -105,7 +120,7 @@ export function BottomControlDock({
 
         {/* ── Group 1: Drive mode + Direction ── */}
         <div className="flex items-center gap-1.5">
-          {(['auto', 'semi-auto', 'manual'] as const).map((mode) => (
+          {(['auto', 'semi-auto'] as const).map((mode) => (
             <Chip
               key={mode}
               active={control.driveMode === mode}
@@ -119,28 +134,28 @@ export function BottomControlDock({
 
           <Divider />
 
-          <IconBtn onClick={() => onAction('左转')}>
+          <IconBtn disabled={motionDisabled} onClick={() => onAction('左转')}>
             <ArrowLeft className="h-4 w-4" />
           </IconBtn>
           <div className="flex flex-col gap-0.5">
-            <IconBtn onClick={() => onAction('前进')}>
+            <IconBtn disabled={motionDisabled} onClick={() => onAction('前进')}>
               <ArrowUp className="h-4 w-4" />
             </IconBtn>
-            <IconBtn onClick={() => onAction('后退')}>
+            <IconBtn disabled={motionDisabled} onClick={() => onAction('后退')}>
               <ArrowDown className="h-4 w-4" />
             </IconBtn>
           </div>
-          <IconBtn onClick={() => onAction('右转')}>
+          <IconBtn disabled={motionDisabled} onClick={() => onAction('右转')}>
             <ArrowRight className="h-4 w-4" />
           </IconBtn>
         </div>
 
         {/* ── Group 2: Camera PTZ + toggles ── */}
         <div className="flex items-center gap-1.5">
-          <Chip onClick={() => onAction('云台上仰')}>
+          <Chip disabled={motionDisabled} onClick={() => onAction('云台上仰')}>
             <Camera className="mr-1 h-3.5 w-3.5" /> 上仰
           </Chip>
-          <Chip onClick={() => onAction('云台下俯')}>
+          <Chip disabled={motionDisabled} onClick={() => onAction('云台下俯')}>
             <Camera className="mr-1 h-3.5 w-3.5" /> 下俯
           </Chip>
 
@@ -206,6 +221,18 @@ export function BottomControlDock({
           </Chip>
 
           <Divider />
+
+          <button
+            onClick={() => onModeChange(isManual ? 'auto' : 'manual')}
+            className={`inline-flex h-10 items-center gap-1.5 rounded-xl border px-4 text-[12px] font-semibold transition-all duration-300 active:scale-95 ${
+              isManual
+                ? 'border-cyan-400/35 bg-cyan-400/14 text-cyan-100 shadow-[0_0_16px_rgba(34,211,238,0.12)]'
+                : 'border-amber-300/30 bg-amber-300/10 text-amber-100 hover:bg-amber-300/15'
+            } ${hl('mode') ? HIGHLIGHT_RING : ''}`}
+          >
+            <ShieldCheck className="h-4 w-4" />
+            {isManual ? '恢复自动' : '人工接管'}
+          </button>
 
           <button
             onClick={() => onAction('急停')}

@@ -1,13 +1,25 @@
 import type { Severity, Tone } from './dashboard'
 
 export type CommandMode = 'auto' | 'semi-auto' | 'manual'
-export type MissionStatus = 'running' | 'paused' | 'attention'
+export type MissionStatus = 'running' | 'paused' | 'attention' | 'queued'
 export type SensorStatus = 'normal' | 'watch' | 'danger'
 export type SensorTrend = 'up' | 'down' | 'steady'
 export type AuxViewStatus = 'live' | 'queued' | 'standby'
 export type EventStatus = 'new' | 'acknowledged' | 'processing'
 export type OnlineState = 'online' | 'warning'
 export type NetworkQuality = 'excellent' | 'good' | 'unstable'
+export type MovementStrategyAction = 'continue' | 'slow' | 'stop' | 'takeover'
+
+export interface MovementStrategySuggestion {
+  id: string
+  action: MovementStrategyAction
+  severity: Severity
+  title: string
+  reason: string
+  segmentId: string
+  sourceAlertIds: string[]
+  createdAt: string
+}
 
 export interface CommandMeta {
   stationName: string

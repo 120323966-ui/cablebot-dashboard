@@ -52,7 +52,7 @@ export function VoiceOverlay({
   onCommand: (cmd: string) => void
 }) {
   const [listening, setListening] = useState(false)
-  const [transcript, setTranscript] = useState('')
+  const [transcript, setTranscript] = useState(voice.transcript)
   const [pendingCommand, setPendingCommand] = useState<string | null>(null)
   const [history, setHistory] = useState<{ text: string; status: 'executed' | 'cancelled' }[]>([])
   const recognitionRef = useRef<SpeechRecognition | null>(null)
@@ -72,7 +72,7 @@ export function VoiceOverlay({
   /* ── User confirms: execute ─────────────────────────── */
   const confirmCommand = () => {
     if (!pendingCommand) return
-    setHistory((h) => [{ text: pendingCommand, status: 'executed' }, ...h].slice(0, 5))
+    setHistory((h) => [{ text: pendingCommand, status: 'executed' as const }, ...h].slice(0, 5))
     onCommand(pendingCommand)
     setPendingCommand(null)
     setTranscript('')
@@ -81,7 +81,7 @@ export function VoiceOverlay({
   /* ── User rejects: cancel and close ─────────────────── */
   const rejectCommand = () => {
     if (pendingCommand) {
-      setHistory((h) => [{ text: pendingCommand, status: 'cancelled' }, ...h].slice(0, 5))
+      setHistory((h) => [{ text: pendingCommand, status: 'cancelled' as const }, ...h].slice(0, 5))
     }
     setPendingCommand(null)
     setTranscript('')

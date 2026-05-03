@@ -18,9 +18,7 @@
  */
 
 import {
-  createContext,
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -31,18 +29,17 @@ import { applyRealtime, useRealtimeDashboard } from '@/hooks/useRealtimeDashboar
 import { announceAlert } from '@/utils/voiceAudio'
 import type { AlertItem, HomeOverviewResponse, RealtimeMessage, Severity } from '@/types/dashboard'
 import type { SegmentAlertHistory } from '@/types/alerts'
+import {
+  DashboardContext,
+  SEVERITY_WEIGHT,
+  type ControlAuthority,
+  type DashboardContextValue,
+} from './dashboardContextCore'
 
 /* ── 重复告警抑制配置 ── */
 
 /** 抑制时间窗口（毫秒），同一 groupKey 在此窗口内不重复通知 */
 const SUPPRESSION_WINDOW_MS = 60_000
-
-/** 严重程度权重，用于判断"升级"场景 */
-const SEVERITY_WEIGHT: Record<Severity, number> = {
-  info: 0,
-  warning: 1,
-  critical: 2,
-}
 
 /** 抑制映射表中每个 groupKey 对应的记录 */
 interface SuppressionRecord {
@@ -51,37 +48,6 @@ interface SuppressionRecord {
   /** 最近一次通知时的严重程度 */
   lastSeverity: Severity
 }
-
-/* ── Context shape ── */
-
-interface DashboardContextValue {
-  /** 合并了初始数据和实时更新的最新数据 */
-  data: HomeOverviewResponse | null
-  loading: boolean
-  error: string | null
-  /** 用于语音指令等外部操作直接修改数据 */
-  updateData: (updater: (current: HomeOverviewResponse) => HomeOverviewResponse) => void
-
-  /* ── 全局告警管理（跨页同步） ── */
-
-  /** 全量告警列表（首页、告警处置页、Command 页共享） */
-  alerts: AlertItem[]
-  /** 告警处置页额外数据：区段历史统计 */
-  alertHistory: SegmentAlertHistory[]
-  /** 告警处置页额外数据：区段 ID 列表（筛选下拉用） */
-  alertSegments: string[]
-  /** 修改单条告警状态（确认/关闭），全页面同步 */
-  updateAlertStatus: (alertId: string, status: AlertItem['status']) => void
-
-  /* ── 全局视觉通知 ── */
-
-  /** 最新一条待弹出的告警（仅 critical/warning），null 表示无通知 */
-  latestNewAlert: AlertItem | null
-  /** 关闭当前通知 */
-  dismissLatestAlert: () => void
-}
-
-const DashboardContext = createContext<DashboardContextValue | null>(null)
 
 /* ── Provider ── */
 
@@ -99,6 +65,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
 
   /* ── 全局视觉通知状态 ── */
   const [latestNewAlert, setLatestNewAlert] = useState<AlertItem | null>(null)
+  const [controlAuthority, setControlAuthority] = useState<ControlAuthority>('semi-auto')
 
   /* ── 重复告警抑制映射表（不需要触发渲染，用 ref） ── */
   const suppressionMapRef = useRef<Map<string, SuppressionRecord>>(new Map())
@@ -126,6 +93,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
 
         setInitialData(homeData)
         setLiveData(homeData)
+        setControlAuthority(homeData.activeTask?.mode ?? 'semi-auto')
 
         // 初始化全量告警：取告警页数据（更完整，含 history/segments）
         setAlertsFull(alertsData.alerts)
@@ -307,8 +275,10 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
       updateAlertStatus,
       latestNewAlert,
       dismissLatestAlert,
+      controlAuthority,
+      setControlAuthority,
     }),
-    [merged, loading, error, updateData, alertsFull, alertHistory, alertSegments, updateAlertStatus, latestNewAlert, dismissLatestAlert],
+    [merged, loading, error, updateData, alertsFull, alertHistory, alertSegments, updateAlertStatus, latestNewAlert, dismissLatestAlert, controlAuthority],
   )
 
   return (
@@ -316,14 +286,4 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
       {children}
     </DashboardContext.Provider>
   )
-}
-
-/* ── Hook ── */
-
-export function useDashboardContext() {
-  const ctx = useContext(DashboardContext)
-  if (!ctx) {
-    throw new Error('useDashboardContext must be used within DashboardProvider')
-  }
-  return ctx
 }

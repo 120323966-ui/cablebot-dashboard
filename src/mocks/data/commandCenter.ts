@@ -6,6 +6,7 @@
 import type {
   CommandCenterResponse,
   CommandEvent,
+  NetworkQuality,
   SensorMetric,
   SensorStatus,
   SensorTrend,
@@ -152,6 +153,12 @@ function buildTargets(segmentId: string) {
 
 const voiceSamples = ['停止前进', '切换热成像', '标记当前异常', '聚焦前方高温点']
 
+function networkQualityFromRssi(signalRssi: number): NetworkQuality {
+  if (signalRssi > -60) return 'good'
+  if (signalRssi > -70) return 'good'
+  return 'unstable'
+}
+
 export function createCommandCenterMock(robotId = 'R1'): CommandCenterResponse {
   const robots = getRobots()
   const robot = robots.find((r) => r.id === robotId) ?? robots[0]
@@ -196,7 +203,7 @@ export function createCommandCenterMock(robotId = 'R1'): CommandCenterResponse {
       headingDeg: 92,
       pitchDeg: 2.4,
       rollDeg: 1.2,
-      networkQuality: robot.signalRssi > -60 ? 'good' : robot.signalRssi > -70 ? 'fair' : 'poor',
+      networkQuality: networkQualityFromRssi(robot.signalRssi),
       cameraTempC: 31.8,
     },
     primaryVideo: {

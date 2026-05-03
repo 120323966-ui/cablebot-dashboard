@@ -15,6 +15,7 @@ import {
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { useHistory } from '@/hooks/useHistory'
+import { EventTimeline } from './EventTimeline'
 import type { AlertRecord, HistoryPageResponse, InspectionRecord, TimeRange } from '@/types/history'
 
 /* ═══════════════════════════════════════════════════
@@ -729,7 +730,7 @@ export function HistoryPage() {
 
   const handleHeatmapClick = useCallback(
     (segmentId: string) => {
-      navigate('/spatial')
+      navigate(`/spatial?segment=${segmentId}`)
     },
     [navigate],
   )
@@ -794,6 +795,8 @@ export function HistoryPage() {
           color="text-emerald-400"
         />
       </div>
+
+      <EventTimeline data={data} onSelectSegment={handleHeatmapClick} />
 
       {/* ═══ Layer 2: Charts 2×2 ═══ */}
       <div className="grid gap-4 xl:grid-cols-[1.15fr_1fr]">

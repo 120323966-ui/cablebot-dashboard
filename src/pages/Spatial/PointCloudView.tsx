@@ -184,7 +184,7 @@ function generateTunnelCloud(
   }
 
   /* ── Segment-specific features ── */
-  applyFeatures(seg, alerts, pts, cls, L, W, H, n, nt)
+  applyFeatures(seg, alerts, pts, cls, L, W, H, n)
 
   return {
     positions: new Float32Array(pts),
@@ -206,7 +206,6 @@ function applyFeatures(
   W: number,
   H: number,
   n: number,
-  _nt: number,
 ) {
   const hw = W / 2,
     hh = H / 2
@@ -354,12 +353,12 @@ function applyFeatures(
    Alert markers + label 3D positions
    ═══════════════════════════════════════════════════ */
 
-function generateAlertMarkers(alerts: PipeAlert[], L: number, segId?: string) {
+function generateAlertMarkers(alerts: PipeAlert[], L: number) {
   const pts: number[] = []
   const cls: number[] = []
   const labelPos: THREE.Vector3[] = []
 
-  const hw = 2, hh = 1.5  // tunnel half-dimensions match generateTunnelCloud
+  const hw = 2  // tunnel half-width matches generateTunnelCloud
 
   for (let ai = 0; ai < alerts.length; ai++) {
     const alert = alerts[ai]
@@ -428,7 +427,7 @@ interface Props {
   focusAlertId?: string | null
 }
 
-export function PointCloudView({ segment, sensors: _sensors, alerts, focusAlertId }: Props) {
+export function PointCloudView({ segment, alerts, focusAlertId }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const overlayRef = useRef<HTMLDivElement>(null)
@@ -507,7 +506,7 @@ export function PointCloudView({ segment, sensors: _sensors, alerts, focusAlertI
     scene.add(new THREE.Points(geom, mat))
 
     /* — Alert marker cloud — */
-    const alertData = generateAlertMarkers(alerts, L, segment.id)
+    const alertData = generateAlertMarkers(alerts, L)
     const aGeom = new THREE.BufferGeometry()
     aGeom.setAttribute(
       'position',

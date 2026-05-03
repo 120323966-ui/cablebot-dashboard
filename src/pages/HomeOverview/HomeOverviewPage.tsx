@@ -10,7 +10,7 @@ import { ActionDock } from './ActionDock'
 import { Button } from '@/components/ui/Button'
 import { useVoiceEngine } from '@/hooks/useVoiceEngine'
 import { useRegisterVoiceKeys } from '@/hooks/useRegisterVoiceKeys'
-import { useDashboardContext } from '@/context/DashboardContext'
+import { useDashboardContext } from '@/context/useDashboardContext'
 import type { VoiceIntent } from '@/utils/voiceIntents'
 
 export function HomeOverviewPage() {

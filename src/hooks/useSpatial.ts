@@ -9,6 +9,7 @@ interface SpatialState {
 
 export function useSpatial() {
   const [state, setState] = useState<SpatialState>({ data: null, loading: true, error: null })
+  const hasData = Boolean(state.data)
 
   useEffect(() => {
     let active = true
@@ -27,7 +28,7 @@ export function useSpatial() {
   }, [])
 
   useEffect(() => {
-    if (!state.data) return
+    if (!hasData) return
     const timer = window.setInterval(() => {
       setState((s) => {
         if (!s.data) return s
@@ -43,7 +44,7 @@ export function useSpatial() {
       })
     }, 1500)
     return () => window.clearInterval(timer)
-  }, [Boolean(state.data)])
+  }, [hasData])
 
   const [selectedSegment, setSelectedSegment] = useState<string | null>(null)
   const [selectedRobot, setSelectedRobot] = useState<string | null>(null)

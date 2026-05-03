@@ -5,10 +5,8 @@ import {
   CheckCircle2,
   ChevronDown,
   Compass,
-  Radio,
   Route,
   Thermometer,
-  Triangle,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/Badge'
 import type {
@@ -37,12 +35,6 @@ function trendArrow(trend: SensorMetric['trend']) {
 function eventTone(severity: CommandEvent['severity']) {
   if (severity === 'critical') return 'danger' as const
   if (severity === 'warning') return 'warning' as const
-  return 'neutral' as const
-}
-
-function viewTone(status: AuxView['status']) {
-  if (status === 'live') return 'danger' as const
-  if (status === 'queued') return 'warning' as const
   return 'neutral' as const
 }
 
@@ -305,7 +297,7 @@ export function RightCommandRail({
                     {sensor.value}
                     <span className="ml-0.5 text-[10px] font-normal text-slate-400">{sensor.unit}</span>
                   </span>
-                  <span className="text-[11px] text-slate-400">{trendArrow(sensor)}</span>
+                  <span className="text-[11px] text-slate-400">{trendArrow(sensor.trend)}</span>
                   <Badge tone={sensorTone(sensor.status)}>
                     {sensor.status === 'normal' ? 'ok' : sensor.status}
                   </Badge>

@@ -5,19 +5,21 @@ import { BottomControlDock } from './BottomControlDock'
 import { CenterVideoStage } from './CenterVideoStage'
 import { CommandHeaderBar } from './CommandHeaderBar'
 import { CommandVoiceDock } from './CommandVoiceDock'
+import { MovementStrategyCard } from './MovementStrategyCard'
 import { RightCommandRail } from './RightCommandRail'
 import { useCommandCenter } from '@/hooks/useCommandCenter'
 import {
   applyCommandRealtime,
   useRealtimeCommandCenter,
 } from '@/hooks/useRealtimeCommandCenter'
-import { useDashboardContext } from '@/context/DashboardContext'
+import { useDashboardContext } from '@/context/useDashboardContext'
 import { useVoiceEngine } from '@/hooks/useVoiceEngine'
 import { useRegisterVoiceKeys } from '@/hooks/useRegisterVoiceKeys'
 import {
   registerCommandToggle,
   unregisterCommandToggle,
 } from '@/hooks/useKeyboardShortcuts'
+import { deriveMovementStrategy } from '@/utils/movementStrategy'
 import type {
   CommandCenterResponse,
   CommandEvent,
@@ -26,6 +28,7 @@ import type {
   CommandMission,
   ControlState,
   EventStatus,
+  MovementStrategySuggestion,
 } from '@/types/command'
 import type { VoiceIntent } from '@/utils/voiceIntents'
 
@@ -71,11 +74,18 @@ export function CommandPage() {
   const [dockState, setDockState] = useState<ControlState | null>(null)
   const [voiceOpen, setVoiceOpen] = useState(false)
   const [activeAux, setActiveAux] = useState<Set<string>>(new Set())
+  const [dismissedStrategyId, setDismissedStrategyId] = useState<string | null>(null)
   /** 最近一次语音操作高亮的控件 key，1秒后自动清除 */
   const [highlightKey, setHighlightKey] = useState<string | null>(null)
   const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const { data: dashboardData, updateData: updateDashboard, alerts: globalAlerts, updateAlertStatus } = useDashboardContext()
+  const {
+    data: dashboardData,
+    updateData: updateDashboard,
+    alerts: globalAlerts,
+    updateAlertStatus,
+    setControlAuthority,
+  } = useDashboardContext()
   const dashboardRef = useRef(dashboardData)
   dashboardRef.current = dashboardData
 
@@ -96,6 +106,12 @@ export function CommandPage() {
   }, [])
 
   const merged = useMemo(() => liveData ?? data, [data, liveData])
+  const movementStrategy = useMemo(() => {
+    if (!merged) return null
+    const strategy = deriveMovementStrategy(merged.mission, globalAlerts)
+    if (!strategy || strategy.id === dismissedStrategyId) return null
+    return strategy
+  }, [dismissedStrategyId, globalAlerts, merged])
 
   /* ── 从全局告警列表派生 Command 页事件流 ── */
   const derivedEvents = useMemo(() => {
@@ -177,7 +193,8 @@ export function CommandPage() {
 
   const updateMode = useCallback((mode: CommandMode) => {
     setDockState((c) => (c ? { ...c, driveMode: mode } : c))
-  }, [])
+    setControlAuthority(mode)
+  }, [setControlAuthority])
 
   const toggleControl = useCallback((key: 'lightOn' | 'stabilizationOn' | 'recording') => {
     setDockState((c) => (c ? { ...c, [key]: !c[key] } : c))
@@ -212,6 +229,7 @@ export function CommandPage() {
       setLiveData((c) => {
         if (!c) return c
         const isStopped = c.mission.status === 'attention'
+        setControlAuthority(isStopped ? (dockState?.driveMode ?? c.control.driveMode) : 'emergency')
         updateDashboard((d) => {
           if (!d.activeTask) return d
           return { ...d, activeTask: { ...d.activeTask, status: isStopped ? 'running' : 'paused' } }
@@ -220,7 +238,40 @@ export function CommandPage() {
       })
       return
     }
-  }, [updateDashboard])
+  }, [dockState?.driveMode, setControlAuthority, updateDashboard])
+
+  const confirmMovementStrategy = useCallback((strategy: MovementStrategySuggestion) => {
+    setDismissedStrategyId(strategy.id)
+
+    if (strategy.action === 'stop') {
+      triggerAction('暂停巡检')
+      flashHighlight('pause')
+      return
+    }
+
+    if (strategy.action === 'slow') {
+      setDockState((control) => {
+        if (!control) return control
+        return { ...control, speedLevel: 1 }
+      })
+      flashHighlight('speed')
+      return
+    }
+
+    if (strategy.action === 'takeover') {
+      updateMode('manual')
+      flashHighlight('mode')
+    }
+  }, [flashHighlight, triggerAction, updateMode])
+
+  const dismissMovementStrategy = useCallback((strategy: MovementStrategySuggestion) => {
+    setDismissedStrategyId(strategy.id)
+  }, [])
+
+  const viewMovementStrategyAlerts = useCallback((strategy: MovementStrategySuggestion) => {
+    const firstAlertId = strategy.sourceAlertIds[0]
+    navigate(firstAlertId ? `/alerts?id=${firstAlertId}` : '/alerts')
+  }, [navigate])
 
   /* ── Voice command execution ── */
 
@@ -389,6 +440,15 @@ export function CommandPage() {
             <CommandVoiceDock
               voice={voice}
               onClose={() => setVoiceOpen(false)}
+            />
+          )}
+
+          {!voiceOpen && movementStrategy && (
+            <MovementStrategyCard
+              strategy={movementStrategy}
+              onConfirm={confirmMovementStrategy}
+              onDismiss={dismissMovementStrategy}
+              onViewAlerts={viewMovementStrategyAlerts}
             />
           )}
         </div>

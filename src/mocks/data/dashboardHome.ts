@@ -2,12 +2,13 @@
    Dashboard Home Mock — derives from sharedSeed
    ═══════════════════════════════════════════════════ */
 
-import type { AlertItem, HomeOverviewResponse, TrendPoint } from '@/types/dashboard'
+import type { AlertItem, HeatCell, HomeOverviewResponse, TrendPoint } from '@/types/dashboard'
 import { SEGMENT_LABELS, BASE_RISK } from './constants'
 import {
-  getActiveAlerts, getRobots, getKpis, getSegmentRisks,
+  getActiveAlerts, getRobots, getKpis,
   createRealtimeAlert as sharedRealtimeAlert,
 } from './sharedSeed'
+import type { ActiveAlert } from './sharedSeed'
 
 /* ── Trend helpers (chart-specific, not shared) ── */
 
@@ -42,11 +43,13 @@ function buildHeatmap() {
   const rowMul = [1.08, 0.95, 0.82]
   const offsets = [0.02, 0, 0.04, -0.01, 0.09, 0.04, -0.07, 0.04] // per-segment fine-tuning
 
-  const cells = columns.flatMap((seg, ci) => {
+  const cells: HeatCell[] = columns.flatMap((seg, ci) => {
     const base = BASE_RISK[seg]
     return rows.map((_, ri) => {
       const risk = Math.min(1, Math.max(0, Number((base * rowMul[ri] + offsets[ci] * (ri === 0 ? 1 : ri === 1 ? 0.5 : 0)).toFixed(2))))
-      let label: string, kind: string, trend: 'up' | 'down' | 'steady'
+      let label: string
+      let kind: NonNullable<HeatCell['kind']>
+      let trend: NonNullable<HeatCell['trend']>
 
       if (risk >= 0.8) { label = '热像复核'; kind = 'temperature'; trend = 'up' }
       else if (risk >= 0.65) { label = '潮湿异常'; kind = 'humidity'; trend = 'up' }
@@ -62,6 +65,25 @@ function buildHeatmap() {
   return { columns, rows, cells }
 }
 
+function toAlertItem(alert: ActiveAlert): AlertItem {
+  return {
+    id: alert.id,
+    title: alert.title,
+    severity: alert.severity,
+    status: alert.status,
+    segmentId: alert.segmentId,
+    occurredAt: alert.occurredAt,
+    evidence: alert.evidence,
+    value: alert.value,
+    type: alert.type,
+    currentValue: alert.currentValue,
+    unit: alert.unit,
+    threshold: alert.threshold,
+    recentTrend: alert.recentTrend,
+    groupKey: alert.groupKey,
+  }
+}
+
 /* ═══════════════════════════════════════════════════
    Public API
    ═══════════════════════════════════════════════════ */
@@ -74,7 +96,7 @@ export function createHomeOverviewMock(): HomeOverviewResponse {
   // Map ActiveAlert → AlertItem (drop type & progress)
   const alertItems: AlertItem[] = activeAlerts
     .sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime())
-    .map(({ type, progress, ...rest }) => rest)
+    .map(toAlertItem)
 
   return {
     meta: {
@@ -132,6 +154,5 @@ export function createHomeOverviewMock(): HomeOverviewResponse {
 
 /** Realtime alert for Home page — delegates to shared generator */
 export function createRealtimeAlert(): AlertItem {
-  const { type, progress, ...rest } = sharedRealtimeAlert()
-  return rest
+  return toAlertItem(sharedRealtimeAlert())
 }

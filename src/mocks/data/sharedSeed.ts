@@ -6,7 +6,7 @@
    ═══════════════════════════════════════════════════ */
 
 import {
-  SEGMENTS, ROBOTS, SEG_ALERT_POOL, BASE_RISK, SEGMENT_LABELS,
+  SEGMENTS, ROBOTS, SEG_ALERT_POOL, BASE_RISK,
   ROBOT_INIT, SEGMENT_ENV, SEVERITIES,
   rand, irand, pick,
 } from './constants'
@@ -32,6 +32,13 @@ export interface ActiveAlert {
   type: string
   /** 0-1 position along the segment pipe (for Spatial map markers) */
   progress: number
+  currentValue?: number
+  unit?: string
+  threshold?: {
+    warn: number
+    danger: number
+  }
+  recentTrend?: { time: string; value: number }[]
   /** 关联标识，用于重复告警归并 */
   groupKey?: string
 }
@@ -76,6 +83,67 @@ function isoMinutesAgo(m: number) {
   return new Date(Date.now() - m * 60_000).toISOString()
 }
 
+function firstNumericValue(text: string): number | null {
+  const match = text.match(/-?\d+(?:\.\d+)?/)
+  return match ? Number(match[0]) : null
+}
+
+function metricDefaults(alert: Pick<ActiveAlert, 'segmentId' | 'type' | 'evidence' | 'severity'>) {
+  const env = SEGMENT_ENV[alert.segmentId] ?? { temperatureC: 30, humidityPct: 65 }
+  const parsed = firstNumericValue(alert.evidence)
+
+  if (/热像|温升|温度/.test(alert.type)) {
+    return { currentValue: parsed ?? env.temperatureC, unit: '°C', threshold: { warn: 60, danger: 68 } }
+  }
+  if (/湿度|渗漏/.test(alert.type)) {
+    return { currentValue: parsed ?? env.humidityPct, unit: '%', threshold: { warn: 75, danger: 85 } }
+  }
+  if (/积水/.test(alert.type)) {
+    return { currentValue: parsed ?? 3, unit: 'cm', threshold: { warn: 2, danger: 5 } }
+  }
+  if (/气体/.test(alert.type)) {
+    return { currentValue: parsed ?? 0.6, unit: '%', threshold: { warn: 0.7, danger: 1 } }
+  }
+  if (/振动/.test(alert.type)) {
+    return { currentValue: parsed ?? 1.6, unit: 'g', threshold: { warn: 1.5, danger: 2.2 } }
+  }
+  if (/结构/.test(alert.type)) {
+    return { currentValue: parsed ?? 82, unit: '%', threshold: { warn: 80, danger: 90 } }
+  }
+  if (/通信/.test(alert.type)) {
+    return { currentValue: parsed ?? -66, unit: 'dBm', threshold: { warn: -65, danger: -75 } }
+  }
+  if (/照明/.test(alert.type)) {
+    return { currentValue: parsed ?? 12, unit: 'lux', threshold: { warn: 30, danger: 15 } }
+  }
+
+  return { currentValue: parsed ?? 0, unit: '', threshold: { warn: 1, danger: 2 } }
+}
+
+function buildRecentTrend(anchorIso: string, currentValue: number, severity: ActiveAlert['severity']) {
+  const anchor = new Date(anchorIso)
+  const severityLift = severity === 'critical' ? 0.16 : severity === 'warning' ? 0.1 : 0.04
+  return Array.from({ length: 6 }, (_, idx) => {
+    const pointTime = new Date(anchor)
+    pointTime.setMinutes(anchor.getMinutes() - (5 - idx) * 6)
+    const scale = 1 - severityLift + (idx / 5) * severityLift
+    const wobble = Math.sin(idx * 1.7) * currentValue * 0.018
+    return {
+      time: pointTime.toISOString(),
+      value: Number((currentValue * scale + wobble).toFixed(1)),
+    }
+  })
+}
+
+function enrichAlert(alert: ActiveAlert): ActiveAlert {
+  const metric = metricDefaults(alert)
+  return {
+    ...alert,
+    ...metric,
+    recentTrend: alert.recentTrend ?? buildRecentTrend(alert.occurredAt, metric.currentValue, alert.severity),
+  }
+}
+
 /* ═══════════════════════════════════════════════════
    1. Raw Alerts (30-day history for History & Reports)
    ═══════════════════════════════════════════════════ */
@@ -112,7 +180,7 @@ function generateRawAlerts(days: number): RawAlert[] {
    ═══════════════════════════════════════════════════ */
 
 function buildActiveAlerts(): ActiveAlert[] {
-  return [
+  const alerts: ActiveAlert[] = [
     // ── B3 (risk 0.82) — 热像异常 dominant, 3 alerts ──
     { id: 'AL-301', segmentId: 'B3', type: '热像异常', severity: 'critical', status: 'new',
       title: 'B3 段热像异常偏高', evidence: '热像峰值 71.2°C', value: '高于阈值 +9.3°C',
@@ -165,6 +233,7 @@ function buildActiveAlerts(): ActiveAlert[] {
       title: 'A1 段照明异常', evidence: '照度 12lux', value: '低于正常值 60%',
       occurredAt: isoMinutesAgo(180), progress: 0.30 },
   ]
+  return alerts.map(enrichAlert)
 }
 
 /* ═══════════════════════════════════════════════════
@@ -218,7 +287,7 @@ export function createRealtimeAlert(): ActiveAlert {
   // 生成关联标识：区段 + 标题，用于下游重复告警归并
   const groupKey = `${tpl.segment}::${tpl.title}`
 
-  return {
+  return enrichAlert({
     id: `AL-${realtimeSeq}`,
     title: tpl.title,
     severity: tpl.severity,
@@ -230,7 +299,7 @@ export function createRealtimeAlert(): ActiveAlert {
     type: SEG_ALERT_POOL[tpl.segment]?.[0] ?? '热像异常',
     progress: Number(rand(0.1, 0.9).toFixed(2)),
     groupKey,
-  }
+  })
 }
 
 /* ═══════════════════════════════════════════════════

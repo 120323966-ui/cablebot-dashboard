@@ -24,6 +24,15 @@ export interface AlertNote {
   createdAt: string
 }
 
+/** AI 辅助研判：只作为旁路参考，不改变告警事实和处置状态 */
+export interface AIJudgment {
+  id: string
+  summary: string
+  relatedAlertIds: string[]
+  generatedAt: string
+  basis: string[]
+}
+
 /** 筛选条件 */
 export interface AlertFilters {
   severity: Severity | 'all'

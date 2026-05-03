@@ -61,6 +61,19 @@ export interface AlertItem {
   occurredAt: string
   evidence: string
   value: string
+  /** 告警类型，用于同类告警、阈值和传播规则判断 */
+  type?: string
+  /** 当前监测值，用于分级依据可视化 */
+  currentValue?: number
+  /** 当前监测值单位 */
+  unit?: string
+  /** 分级阈值：预警 / 危险 */
+  threshold?: {
+    warn: number
+    danger: number
+  }
+  /** 当前区段最近同类监测趋势 */
+  recentTrend?: TrendPoint[]
 
   /* ── 重复告警归并字段（可选，仅实时告警填充） ── */
 

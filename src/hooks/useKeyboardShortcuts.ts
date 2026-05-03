@@ -18,7 +18,7 @@
 
 import { useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { useDashboardContext } from '@/context/DashboardContext'
+import { useDashboardContext } from '@/context/useDashboardContext'
 import { isVoiceMuted, setVoiceMuted } from '@/utils/voiceAudio'
 
 /** 快捷键定义（供帮助面板展示） */

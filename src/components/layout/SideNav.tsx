@@ -6,7 +6,7 @@ const items = [
   { to: '/overview', label: '首页总览', icon: LayoutDashboard },
   { to: '/command', label: '实时巡检', icon: Radar },
   { to: '/alerts', label: '告警处置', icon: AlertTriangle },
-  { to: '/spatial', label: '空间定位 / 3D', icon: Map },
+  { to: '/spatial', label: '空间定位', icon: Map },
   { to: '/history', label: '历史分析', icon: BarChart3 },
   { to: '/reports', label: '报告生成', icon: FileText },
 ]
@@ -50,7 +50,7 @@ export function SideNav() {
       <div className="mt-auto rounded-3xl border border-white/8 bg-white/[0.03] p-4">
         <div className="panel-eyebrow">多模态交互</div>
         <p className="mt-2 text-sm leading-6 text-slate-300">
-          语音指令（V 键唤起）、键盘快捷键、视觉通知三通道协同，告警数据全局同步，覆盖首页、巡检、告警三大核心页面。
+          语音指令、键盘快捷键、视觉通知三通道协同，告警与状态全局同步覆盖六个任务页面。
         </p>
       </div>
     </aside>
