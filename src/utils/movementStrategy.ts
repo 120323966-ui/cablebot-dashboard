@@ -1,18 +1,6 @@
 import type { AlertItem } from '@/types/dashboard'
 import type { CommandMission, MovementStrategySuggestion } from '@/types/command'
-
-const PIPE_GROUPS = [
-  ['A1', 'A2'],
-  ['B1', 'B2', 'B3'],
-  ['C1', 'C2', 'C3'],
-]
-
-function nextSegment(segmentId: string) {
-  const group = PIPE_GROUPS.find((items) => items.includes(segmentId))
-  if (!group) return null
-  const index = group.indexOf(segmentId)
-  return index >= 0 && index < group.length - 1 ? group[index + 1] : null
-}
+import { getNeighbors } from './topology'
 
 function alertTypeLabel(alert: AlertItem) {
   return alert.type ?? alert.title
@@ -26,6 +14,11 @@ function buildId(action: MovementStrategySuggestion['action'], mission: CommandM
   ].join('::')
 }
 
+function segmentText(segmentIds: string[]) {
+  if (segmentIds.length <= 1) return segmentIds[0] ?? ''
+  return `${segmentIds.join('、')} ${segmentIds.length} 段`
+}
+
 export function deriveMovementStrategy(
   mission: CommandMission,
   alerts: AlertItem[],
@@ -36,10 +29,8 @@ export function deriveMovementStrategy(
 
   const openAlerts = alerts.filter((alert) => alert.status !== 'closed')
   const currentAlerts = openAlerts.filter((alert) => alert.segmentId === mission.segmentId)
-  const frontSegment = nextSegment(mission.segmentId)
-  const frontAlerts = frontSegment
-    ? openAlerts.filter((alert) => alert.segmentId === frontSegment)
-    : []
+  const frontSegments = getNeighbors(mission.segmentId).downstream
+  const frontAlerts = openAlerts.filter((alert) => frontSegments.includes(alert.segmentId))
 
   const currentCritical = currentAlerts.filter((alert) => alert.status === 'new' && alert.severity === 'critical')
   if (currentCritical.length > 0) {
@@ -74,30 +65,34 @@ export function deriveMovementStrategy(
   }
 
   const frontCritical = frontAlerts.filter((alert) => alert.status === 'new' && alert.severity === 'critical')
-  if (frontCritical.length > 0 && frontSegment) {
+  if (frontCritical.length > 0) {
     const alertIds = frontCritical.map((alert) => alert.id)
+    const affectedSegments = Array.from(new Set(frontCritical.map((alert) => alert.segmentId)))
+    const targetSegment = affectedSegments[0]
     return {
       id: buildId('slow', mission, alertIds),
       action: 'slow',
       severity: 'warning',
       title: '建议提前减速',
-      reason: `前方 ${frontSegment} 区段存在 ${frontCritical.length} 条未处置 critical 告警，建议提前减速并准备停止。`,
-      segmentId: frontSegment,
+      reason: `前方 ${segmentText(affectedSegments)}存在 ${frontCritical.length} 条未处置 critical 告警，建议提前减速并准备停止。`,
+      segmentId: targetSegment,
       sourceAlertIds: alertIds,
       createdAt: new Date().toISOString(),
     }
   }
 
   const frontWarnings = frontAlerts.filter((alert) => alert.status === 'new' && alert.severity === 'warning')
-  if (frontWarnings.length > 0 && frontSegment) {
+  if (frontWarnings.length > 0) {
     const alertIds = frontWarnings.map((alert) => alert.id)
+    const affectedSegments = Array.from(new Set(frontWarnings.map((alert) => alert.segmentId)))
+    const targetSegment = affectedSegments[0]
     return {
       id: buildId('slow', mission, alertIds),
       action: 'slow',
       severity: 'warning',
       title: '建议低速观察',
-      reason: `前方 ${frontSegment} 区段存在 ${frontWarnings.length} 条未处置 warning 告警，建议保持低速并关注视频画面。`,
-      segmentId: frontSegment,
+      reason: `前方 ${segmentText(affectedSegments)}存在 ${frontWarnings.length} 条未处置 warning 告警，建议保持低速并关注视频画面。`,
+      segmentId: targetSegment,
       sourceAlertIds: alertIds,
       createdAt: new Date().toISOString(),
     }

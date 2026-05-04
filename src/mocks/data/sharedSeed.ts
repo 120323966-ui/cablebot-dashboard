@@ -10,6 +10,8 @@ import {
   ROBOT_INIT, SEGMENT_ENV, SEVERITIES,
   rand, irand, pick,
 } from './constants'
+import { ALERT_TYPE_PARAMS } from '@/utils/alertParams'
+import { mapAlertType } from '@/utils/propagation'
 
 /* ─────── Exported types ─────── */
 
@@ -39,6 +41,13 @@ export interface ActiveAlert {
     danger: number
   }
   recentTrend?: { time: string; value: number }[]
+  /** 数据源类型：移动巡检机器人或固定传感器 */
+  source?: 'mobile' | 'fixed'
+  /** 告警触发时的采集源位置 */
+  capturePoint?: {
+    segmentId: string
+    progress: number
+  }
   /** 关联标识，用于重复告警归并 */
   groupKey?: string
 }
@@ -47,7 +56,7 @@ export interface RobotSnapshot {
   id: string
   name: string
   segmentId: string
-  status: 'inspecting' | 'moving' | 'idle'
+  status: 'inspecting' | 'moving' | 'idle' | 'emergency'
   batteryPct: number
   signalRssi: number
   speedKmh: number
@@ -91,33 +100,22 @@ function firstNumericValue(text: string): number | null {
 function metricDefaults(alert: Pick<ActiveAlert, 'segmentId' | 'type' | 'evidence' | 'severity'>) {
   const env = SEGMENT_ENV[alert.segmentId] ?? { temperatureC: 30, humidityPct: 65 }
   const parsed = firstNumericValue(alert.evidence)
+  const type = mapAlertType(alert.type)
+  const params = ALERT_TYPE_PARAMS[type]
+  const fallback = type === 'thermal'
+    ? env.temperatureC
+    : type === 'moisture'
+      ? env.humidityPct
+      : 0
 
-  if (/热像|温升|温度/.test(alert.type)) {
-    return { currentValue: parsed ?? env.temperatureC, unit: '°C', threshold: { warn: 60, danger: 68 } }
+  return {
+    currentValue: parsed ?? fallback,
+    unit: params.unit,
+    threshold: {
+      warn: params.thresholds.medium,
+      danger: params.thresholds.high,
+    },
   }
-  if (/湿度|渗漏/.test(alert.type)) {
-    return { currentValue: parsed ?? env.humidityPct, unit: '%', threshold: { warn: 75, danger: 85 } }
-  }
-  if (/积水/.test(alert.type)) {
-    return { currentValue: parsed ?? 3, unit: 'cm', threshold: { warn: 2, danger: 5 } }
-  }
-  if (/气体/.test(alert.type)) {
-    return { currentValue: parsed ?? 0.6, unit: '%', threshold: { warn: 0.7, danger: 1 } }
-  }
-  if (/振动/.test(alert.type)) {
-    return { currentValue: parsed ?? 1.6, unit: 'g', threshold: { warn: 1.5, danger: 2.2 } }
-  }
-  if (/结构/.test(alert.type)) {
-    return { currentValue: parsed ?? 82, unit: '%', threshold: { warn: 80, danger: 90 } }
-  }
-  if (/通信/.test(alert.type)) {
-    return { currentValue: parsed ?? -66, unit: 'dBm', threshold: { warn: -65, danger: -75 } }
-  }
-  if (/照明/.test(alert.type)) {
-    return { currentValue: parsed ?? 12, unit: 'lux', threshold: { warn: 30, danger: 15 } }
-  }
-
-  return { currentValue: parsed ?? 0, unit: '', threshold: { warn: 1, danger: 2 } }
 }
 
 function buildRecentTrend(anchorIso: string, currentValue: number, severity: ActiveAlert['severity']) {
@@ -140,6 +138,11 @@ function enrichAlert(alert: ActiveAlert): ActiveAlert {
   return {
     ...alert,
     ...metric,
+    source: alert.source ?? 'fixed',
+    capturePoint: alert.capturePoint ?? {
+      segmentId: alert.segmentId,
+      progress: alert.source === 'mobile' ? alert.progress : 0.5,
+    },
     recentTrend: alert.recentTrend ?? buildRecentTrend(alert.occurredAt, metric.currentValue, alert.severity),
   }
 }
@@ -280,12 +283,19 @@ const REALTIME_TEMPLATES: { title: string; severity: 'critical' | 'warning' | 'i
   { title: 'B1 段通信延迟', severity: 'info', segment: 'B1', evidence: () => `延迟 ${irand(200, 400)}ms`, value: '建议检查中继节点' },
 ]
 
-export function createRealtimeAlert(): ActiveAlert {
+export function createRealtimeAlert(currentRobots: RobotSnapshot[] = getRobots()): ActiveAlert {
   const tpl = REALTIME_TEMPLATES[Math.floor(Math.random() * REALTIME_TEMPLATES.length)]
   realtimeSeq++
 
   // 生成关联标识：区段 + 标题，用于下游重复告警归并
   const groupKey = `${tpl.segment}::${tpl.title}`
+  const robotOnSegment = currentRobots.find((robot) => robot.segmentId === tpl.segment)
+  const isMobile = Math.random() < 0.5 && Boolean(robotOnSegment)
+  const source: ActiveAlert['source'] = isMobile ? 'mobile' : 'fixed'
+  const capturePoint = {
+    segmentId: tpl.segment,
+    progress: isMobile ? robotOnSegment!.progress : 0.5,
+  }
 
   return enrichAlert({
     id: `AL-${realtimeSeq}`,
@@ -298,6 +308,8 @@ export function createRealtimeAlert(): ActiveAlert {
     value: tpl.value,
     type: SEG_ALERT_POOL[tpl.segment]?.[0] ?? '热像异常',
     progress: Number(rand(0.1, 0.9).toFixed(2)),
+    source,
+    capturePoint,
     groupKey,
   })
 }

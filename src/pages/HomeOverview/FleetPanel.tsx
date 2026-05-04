@@ -216,8 +216,8 @@ export function FleetPanel({
         {robots.map((r) => {
           const bpct = Math.round(r.batteryPct)
           const isOffline = r.health === 'neutral'
-          const isIdle = r.taskStatus === 'idle'
-          const taskLabel = r.taskStatus === 'inspecting' ? '巡检中' : r.taskStatus === 'moving' ? '移动中' : '待命'
+          const isIdle = r.taskStatus === 'idle' || r.taskStatus === 'emergency'
+          const taskLabel = r.taskStatus === 'emergency' ? '已急停' : r.taskStatus === 'inspecting' ? '巡检中' : r.taskStatus === 'moving' ? '移动中' : '待命'
 
           /* ── 与 activeTask 实时进度同步 ── */
           const isActiveRobot = !!activeTask && activeTask.segmentId === r.segmentId && !isIdle

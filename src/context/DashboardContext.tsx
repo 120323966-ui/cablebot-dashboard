@@ -27,7 +27,11 @@ import {
 } from 'react'
 import { applyRealtime, useRealtimeDashboard } from '@/hooks/useRealtimeDashboard'
 import { announceAlert } from '@/utils/voiceAudio'
-import type { AlertItem, HomeOverviewResponse, RealtimeMessage, Severity } from '@/types/dashboard'
+import { getSegmentLength } from '@/utils/topology'
+import { SEGMENT_LABELS } from '@/mocks/data/constants'
+import { getRobots, type RobotSnapshot } from '@/mocks/data/sharedSeed'
+import type { RobotControlCommand } from '@/types/command'
+import type { AlertItem, HomeOverviewResponse, RealtimeMessage, RobotOverview, Severity } from '@/types/dashboard'
 import type { SegmentAlertHistory } from '@/types/alerts'
 import {
   DashboardContext,
@@ -40,6 +44,8 @@ import {
 
 /** 抑制时间窗口（毫秒），同一 groupKey 在此窗口内不重复通知 */
 const SUPPRESSION_WINDOW_MS = 60_000
+/** 位移阈值：同一区段内小于区段长度 30% 视为同一采集点附近 */
+const DISPLACEMENT_RATIO = 0.30
 
 /** 抑制映射表中每个 groupKey 对应的记录 */
 interface SuppressionRecord {
@@ -47,6 +53,98 @@ interface SuppressionRecord {
   lastNotifiedAt: number
   /** 最近一次通知时的严重程度 */
   lastSeverity: Severity
+  /** 最近一次实际通知时的采集源位置 */
+  lastCapturePoint?: NonNullable<AlertItem['capturePoint']>
+}
+
+function isDisplacementWithinThreshold(
+  incoming?: AlertItem['capturePoint'],
+  previous?: AlertItem['capturePoint'],
+) {
+  if (!incoming || !previous) return true
+  if (incoming.segmentId !== previous.segmentId) return false
+
+  const length = getSegmentLength(incoming.segmentId)
+  const displacement = Math.abs(incoming.progress - previous.progress) * length
+  return displacement < length * DISPLACEMENT_RATIO
+}
+
+function toHomeRobot(robot: RobotSnapshot): RobotOverview {
+  return {
+    id: robot.id,
+    name: robot.name,
+    health: robot.status === 'emergency' ? 'danger' : robot.status === 'idle' ? 'neutral' : robot.batteryPct < 50 ? 'warning' : 'good',
+    batteryPct: robot.batteryPct,
+    signalRssi: robot.signalRssi,
+    location: SEGMENT_LABELS[robot.segmentId] ?? robot.segmentId,
+    speedKmh: robot.speedKmh,
+    temperatureC: robot.temperatureC,
+    taskStatus: robot.status,
+    taskProgressPct: Math.round(robot.progress * 100),
+    segmentId: robot.segmentId,
+  }
+}
+
+function advanceRobot(robot: RobotSnapshot): RobotSnapshot {
+  if (robot.status === 'idle' || robot.status === 'emergency') return robot
+
+  let nextProgress = robot.progress + robot.direction * 0.035
+  let nextDirection = robot.direction
+  if (nextProgress >= 1) {
+    nextProgress = 1 - (nextProgress - 1)
+    nextDirection = -1
+  } else if (nextProgress <= 0) {
+    nextProgress = -nextProgress
+    nextDirection = 1
+  }
+
+  return {
+    ...robot,
+    progress: Number(nextProgress.toFixed(3)),
+    direction: nextDirection,
+    batteryPct: Math.max(10, Number((robot.batteryPct - 0.05).toFixed(2))),
+    speedKmh: robot.speedKmh === 0 ? (robot.status === 'inspecting' ? 1.2 : 0.8) : robot.speedKmh,
+  }
+}
+
+function applyRobotCommand(
+  robots: RobotSnapshot[],
+  command: RobotControlCommand,
+  robotId: string,
+) {
+  return robots.map((robot) => {
+    if (robot.id !== robotId) return robot
+
+    switch (command.action) {
+      case 'stop':
+        return { ...robot, status: 'idle' as const, speedKmh: 0 }
+      case 'emergency-stop':
+        return { ...robot, status: 'emergency' as const, speedKmh: 0 }
+      case 'slow':
+        return {
+          ...robot,
+          status: robot.status === 'idle' || robot.status === 'emergency' ? 'moving' as const : robot.status,
+          speedKmh: command.payload?.speedKmh ?? 0.5,
+        }
+      case 'continue':
+        return {
+          ...robot,
+          status: 'moving' as const,
+          speedKmh: command.payload?.speedKmh ?? (robot.speedKmh > 0 ? robot.speedKmh : 1.2),
+        }
+      case 'move-to':
+        return command.payload?.targetSegmentId
+          ? {
+              ...robot,
+              segmentId: command.payload.targetSegmentId,
+              progress: 0.05,
+              direction: 1 as const,
+              status: 'moving' as const,
+              speedKmh: command.payload.speedKmh ?? 0.8,
+            }
+          : robot
+    }
+  })
 }
 
 /* ── Provider ── */
@@ -62,6 +160,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   const [alertsFull, setAlertsFull] = useState<AlertItem[]>([])
   const [alertHistory, setAlertHistory] = useState<SegmentAlertHistory[]>([])
   const [alertSegments, setAlertSegments] = useState<string[]>([])
+  const [robots, setRobots] = useState<RobotSnapshot[]>(() => getRobots())
 
   /* ── 全局视觉通知状态 ── */
   const [latestNewAlert, setLatestNewAlert] = useState<AlertItem | null>(null)
@@ -129,8 +228,12 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
             const elapsed = now - record.lastNotifiedAt
             const severityEscalated =
               SEVERITY_WEIGHT[incoming.severity] > SEVERITY_WEIGHT[record.lastSeverity]
+            const displacementWithin = isDisplacementWithinThreshold(
+              incoming.capturePoint,
+              record.lastCapturePoint,
+            )
 
-            if (elapsed < SUPPRESSION_WINDOW_MS && !severityEscalated) {
+            if (elapsed < SUPPRESSION_WINDOW_MS && displacementWithin && !severityEscalated) {
               // ── 命中抑制：归并到已有告警，不新增条目，不通知 ──
               setAlertsFull((prev) => {
                 const idx = prev.findIndex((a) => a.groupKey === groupKey && a.status !== 'closed')
@@ -177,11 +280,19 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
               return
             }
 
-            // ── 超出时间窗口 或 严重程度升高：恢复通知 ──
-            map.set(groupKey, { lastNotifiedAt: now, lastSeverity: incoming.severity })
+            // ── 超出时间窗口 / 位移超阈 / 严重程度升高：恢复通知 ──
+            map.set(groupKey, {
+              lastNotifiedAt: now,
+              lastSeverity: incoming.severity,
+              lastCapturePoint: incoming.capturePoint,
+            })
           } else {
             // ── 首次出现该 groupKey：记录并正常通知 ──
-            map.set(groupKey, { lastNotifiedAt: now, lastSeverity: incoming.severity })
+            map.set(groupKey, {
+              lastNotifiedAt: now,
+              lastSeverity: incoming.severity,
+              lastCapturePoint: incoming.capturePoint,
+            })
           }
 
           // 定期清理过期记录（避免内存泄漏）
@@ -213,6 +324,21 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         announceAlert(incoming.title, incoming.severity, incoming.segmentId)
       }
 
+      if (message.type === 'ROBOT_PULSE') {
+        setRobots((prev) =>
+          prev.map((robot) =>
+            robot.id === message.payload.id
+              ? {
+                  ...robot,
+                  batteryPct: message.payload.batteryPct ?? robot.batteryPct,
+                  signalRssi: message.payload.signalRssi ?? robot.signalRssi,
+                  temperatureC: message.payload.temperatureC ?? robot.temperatureC,
+                }
+              : robot,
+          ),
+        )
+      }
+
       // 首页数据照常更新（alerts 字段保留 top-10）
       setLiveData((current) => {
         if (!current) return current
@@ -223,7 +349,35 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   )
 
   // 实时模拟定时器——在 Context 层级运行，不受页面切换影响
-  useRealtimeDashboard(merged, handleMessage)
+  useRealtimeDashboard(merged, handleMessage, robots)
+
+  useEffect(() => {
+    if (!liveData) return
+    setLiveData((current) => {
+      if (!current) return current
+      return {
+        ...current,
+        meta: { ...current.meta, updatedAt: new Date().toISOString() },
+        robots: robots.map(toHomeRobot),
+      }
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [robots])
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setRobots((prev) => prev.map(advanceRobot))
+    }, 1500)
+    return () => window.clearInterval(timer)
+  }, [])
+
+  const dispatchCommand = useCallback((command: RobotControlCommand, robotId: string) => {
+    setRobots((prev) => applyRobotCommand(prev, command, robotId))
+
+    if (command.action === 'emergency-stop') {
+      setControlAuthority('emergency')
+    }
+  }, [])
 
   /* ── 外部更新接口（供语音指令等使用） ── */
   const updateData = useCallback(
@@ -277,8 +431,10 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
       dismissLatestAlert,
       controlAuthority,
       setControlAuthority,
+      robots,
+      dispatchCommand,
     }),
-    [merged, loading, error, updateData, alertsFull, alertHistory, alertSegments, updateAlertStatus, latestNewAlert, dismissLatestAlert, controlAuthority],
+    [merged, loading, error, updateData, alertsFull, alertHistory, alertSegments, updateAlertStatus, latestNewAlert, dismissLatestAlert, controlAuthority, robots, dispatchCommand],
   )
 
   return (

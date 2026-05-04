@@ -18,33 +18,11 @@
 
 import type { AlertItem } from '@/types/dashboard'
 import type { AIJudgment } from '@/types/alerts'
-
-const PIPE_GROUPS = [
-  ['A1', 'A2'],
-  ['B1', 'B2', 'B3'],
-  ['C1', 'C2', 'C3'],
-]
-
-/* ─────── 邻段查询 ─────── */
-
-interface Neighbors {
-  upstream: string | null
-  downstream: string | null
-}
-
-function neighborSegments(segmentId: string): Neighbors {
-  const group = PIPE_GROUPS.find((items) => items.includes(segmentId))
-  if (!group) return { upstream: null, downstream: null }
-  const index = group.indexOf(segmentId)
-  return {
-    upstream: index > 0 ? group[index - 1] : null,
-    downstream: index < group.length - 1 ? group[index + 1] : null,
-  }
-}
+import { getNeighbors } from './topology'
 
 function isAdjacent(a: string, b: string): boolean {
-  const n = neighborSegments(a)
-  return n.upstream === b || n.downstream === b
+  const neighbors = getNeighbors(a)
+  return neighbors.upstream.includes(b) || neighbors.downstream.includes(b)
 }
 
 /* ─────── 类型与时间比对 ─────── */
@@ -134,14 +112,14 @@ interface PatternSignals {
 }
 
 function detectPatterns(target: AlertItem, related: RelatedAlert[]): PatternSignals {
-  const neighbors = neighborSegments(target.segmentId)
+  const neighbors = getNeighbors(target.segmentId)
 
   const adjacentSameType = related.filter((r) => r.relation === 'adjacent-same-type')
 
   let direction: PatternSignals['adjacentDirection'] = null
   if (adjacentSameType.length > 0) {
-    const hasUp = adjacentSameType.some((r) => r.alert.segmentId === neighbors.upstream)
-    const hasDown = adjacentSameType.some((r) => r.alert.segmentId === neighbors.downstream)
+    const hasUp = adjacentSameType.some((r) => neighbors.upstream.includes(r.alert.segmentId))
+    const hasDown = adjacentSameType.some((r) => neighbors.downstream.includes(r.alert.segmentId))
     if (hasUp && hasDown) direction = 'both'
     else if (hasUp) direction = 'upstream'
     else if (hasDown) direction = 'downstream'

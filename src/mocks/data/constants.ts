@@ -45,7 +45,7 @@ export const SEGMENT_LABELS: Record<string, string> = {
 /** 机器人初始状态快照 */
 export const ROBOT_INIT: Record<string, {
   segmentId: string
-  status: 'inspecting' | 'moving' | 'idle'
+  status: 'inspecting' | 'moving' | 'idle' | 'emergency'
   batteryPct: number
   signalRssi: number
   speedKmh: number

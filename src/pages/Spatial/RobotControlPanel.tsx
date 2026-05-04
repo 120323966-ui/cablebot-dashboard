@@ -19,12 +19,14 @@ import type { PipeSegment, RobotOnMap } from '@/types/spatial'
 function statusLabel(s: RobotOnMap['status']) {
   if (s === 'inspecting') return '巡检中'
   if (s === 'moving') return '移动中'
+  if (s === 'emergency') return '已急停'
   return '已停止'
 }
 
 function statusTone(s: RobotOnMap['status']) {
   if (s === 'inspecting') return 'good' as const
   if (s === 'moving') return 'neutral' as const
+  if (s === 'emergency') return 'danger' as const
   return 'warning' as const
 }
 

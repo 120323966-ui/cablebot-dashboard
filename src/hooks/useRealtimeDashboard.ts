@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
-import { createRealtimeAlert } from '@/mocks/data/dashboardHome'
+import { createRealtimeAlertWithRobots } from '@/mocks/data/dashboardHome'
+import type { RobotSnapshot } from '@/mocks/data/sharedSeed'
 import type { ActiveTask, HomeOverviewResponse, RealtimeMessage } from '@/types/dashboard'
 
 function rand(min: number, max: number) {
@@ -87,13 +88,19 @@ export function applyRealtime(
 export function useRealtimeDashboard(
   data: HomeOverviewResponse | null,
   onMessage: (message: RealtimeMessage) => void,
+  robots: RobotSnapshot[] = [],
 ) {
   const dataRef = useRef<HomeOverviewResponse | null>(data)
+  const robotsRef = useRef<RobotSnapshot[]>(robots)
   const hasData = Boolean(data)
 
   useEffect(() => {
     dataRef.current = data
   }, [data])
+
+  useEffect(() => {
+    robotsRef.current = robots
+  }, [robots])
 
   useEffect(() => {
     if (!dataRef.current) return
@@ -176,7 +183,7 @@ export function useRealtimeDashboard(
     const alertTimer = window.setInterval(() => {
       onMessage({
         type: 'ALERT_NEW',
-        payload: createRealtimeAlert(),
+        payload: createRealtimeAlertWithRobots(robotsRef.current),
       })
     }, 10_000)
 

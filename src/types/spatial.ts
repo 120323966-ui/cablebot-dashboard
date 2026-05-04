@@ -54,7 +54,7 @@ export interface RobotOnMap {
   direction: 1 | -1
   batteryPct: number
   speedKmh: number
-  status: 'moving' | 'inspecting' | 'idle'
+  status: 'moving' | 'inspecting' | 'idle' | 'emergency'
 }
 
 export interface CrossSectionSensor {

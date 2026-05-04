@@ -124,7 +124,6 @@ export function useRealtimeCommandCenter(
         type: 'ROBOT_PULSE',
         payload: {
           batteryPct: Math.max(18, Number((current.robot.batteryPct - rand(0.2, 0.6)).toFixed(1))),
-          speedKmh: Number((Math.max(0.5, 0.8 + rand(0, 0.6))).toFixed(1)),
           headingDeg: Math.round(current.robot.headingDeg + rand(-4, 4)),
           pitchDeg: Number((Math.max(0.8, current.robot.pitchDeg + rand(-0.8, 1.2))).toFixed(1)),
           rollDeg: Number((Math.max(0.5, current.robot.rollDeg + rand(-0.6, 0.8))).toFixed(1)),

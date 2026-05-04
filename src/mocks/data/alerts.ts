@@ -54,6 +54,8 @@ function toAlertItem(alert: ActiveAlert): AlertItem {
     unit: alert.unit,
     threshold: alert.threshold,
     recentTrend: alert.recentTrend,
+    source: alert.source,
+    capturePoint: alert.capturePoint,
     groupKey: alert.groupKey,
   }
 }

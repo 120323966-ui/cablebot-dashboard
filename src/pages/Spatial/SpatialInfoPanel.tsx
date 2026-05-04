@@ -359,8 +359,8 @@ export function SpatialInfoPanel({
               <div key={r.id} className="rounded-xl border border-white/6 bg-white/[0.02] px-3 py-2.5">
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium text-white">{r.name}</span>
-                  <Badge tone={r.status === 'inspecting' ? 'good' : r.status === 'moving' ? 'neutral' : 'warning'}>
-                    {r.status === 'inspecting' ? '巡检中' : r.status === 'moving' ? '移动中' : '待命'}
+                  <Badge tone={r.status === 'emergency' ? 'danger' : r.status === 'inspecting' ? 'good' : r.status === 'moving' ? 'neutral' : 'warning'}>
+                    {r.status === 'emergency' ? '已急停' : r.status === 'inspecting' ? '巡检中' : r.status === 'moving' ? '移动中' : '待命'}
                   </Badge>
                 </div>
                 <div className="mt-2 flex items-center gap-4 text-xs text-slate-400">

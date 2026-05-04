@@ -1,6 +1,8 @@
 import { createContext } from 'react'
 import type { AlertItem, HomeOverviewResponse, Severity } from '@/types/dashboard'
 import type { SegmentAlertHistory } from '@/types/alerts'
+import type { RobotControlCommand } from '@/types/command'
+import type { RobotSnapshot } from '@/mocks/data/sharedSeed'
 
 export type ControlAuthority = 'auto' | 'semi-auto' | 'manual' | 'emergency'
 
@@ -29,6 +31,11 @@ export interface DashboardContextValue {
   /** 全局控制权状态：供顶栏和跨页面状态展示 */
   controlAuthority: ControlAuthority
   setControlAuthority: (value: ControlAuthority) => void
+
+  /** 全局机器人运动模型快照 */
+  robots: RobotSnapshot[]
+  /** 下发机器人控制指令并模拟执行回传 */
+  dispatchCommand: (command: RobotControlCommand, robotId: string) => void
 }
 
 /** 严重程度权重，用于判断"升级"场景 */

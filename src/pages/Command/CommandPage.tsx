@@ -19,6 +19,7 @@ import {
   registerCommandToggle,
   unregisterCommandToggle,
 } from '@/hooks/useKeyboardShortcuts'
+import { SEGMENT_LABELS } from '@/mocks/data/constants'
 import { deriveMovementStrategy } from '@/utils/movementStrategy'
 import type {
   CommandCenterResponse,
@@ -29,7 +30,9 @@ import type {
   ControlState,
   EventStatus,
   MovementStrategySuggestion,
+  RobotControlCommand,
 } from '@/types/command'
+import type { RobotSnapshot } from '@/mocks/data/sharedSeed'
 import type { VoiceIntent } from '@/utils/voiceIntents'
 
 /* ── Merge global context progress into Command mission ── */
@@ -50,6 +53,42 @@ function mergeMissionFromContext(
     checklistDone: activeTask.checksCompleted,
     checklistTotal: activeTask.checksTotal,
     etaMinutes: activeTask.etaMinutes,
+  }
+}
+
+function mergeRobotFromContext(
+  current: CommandCenterResponse['robot'],
+  robot: RobotSnapshot | undefined,
+): CommandCenterResponse['robot'] {
+  if (!robot) return current
+  const label = SEGMENT_LABELS[robot.segmentId] ?? robot.segmentId
+  return {
+    ...current,
+    segmentId: robot.segmentId,
+    segmentProgress: robot.progress,
+    direction: robot.direction,
+    status: robot.status,
+    location: `${label} ${Math.round(robot.progress * 280)}m`,
+    batteryPct: robot.batteryPct,
+    speedKmh: robot.speedKmh,
+    networkQuality: robot.signalRssi > -70 ? 'good' : 'unstable',
+  }
+}
+
+function commandFromStrategy(strategy: MovementStrategySuggestion): RobotControlCommand {
+  const action: RobotControlCommand['action'] =
+    strategy.action === 'stop' ? 'stop'
+    : strategy.action === 'slow' ? 'slow'
+    : strategy.action === 'continue' ? 'continue'
+    : 'continue'
+
+  return {
+    id: `cmd-${strategy.id}`,
+    action,
+    payload: action === 'slow' ? { speedKmh: 0.5 } : undefined,
+    fromStrategyId: strategy.id,
+    issuedAt: new Date().toISOString(),
+    auto: false,
   }
 }
 
@@ -85,6 +124,8 @@ export function CommandPage() {
     alerts: globalAlerts,
     updateAlertStatus,
     setControlAuthority,
+    robots,
+    dispatchCommand,
   } = useDashboardContext()
   const dashboardRef = useRef(dashboardData)
   dashboardRef.current = dashboardData
@@ -151,6 +192,7 @@ export function CommandPage() {
   const handleMessage = useCallback((message: CommandRealtimeMessage) => {
     setLiveData((current) => {
       if (!current) return current
+      if (message.type === 'MISSION_PATCH' && dashboardRef.current?.activeTask) return current
       return applyCommandRealtime(current, message)
     })
   }, [])
@@ -180,6 +222,28 @@ export function CommandPage() {
     dashboardData?.activeTask?.checksCompleted,
     dashboardData?.activeTask?.etaMinutes,
   ])
+
+  useEffect(() => {
+    const robot = robots.find((item) => item.id === robotId)
+    if (!robot) return
+    setLiveData((current) => {
+      if (!current) return current
+      return {
+        ...current,
+        robot: mergeRobotFromContext(current.robot, robot),
+        mission: {
+          ...current.mission,
+          segmentId: robot.segmentId,
+          tunnelSection: `${SEGMENT_LABELS[robot.segmentId] ?? robot.segmentId} 巡检段`,
+          status: robot.status === 'emergency'
+            ? 'attention'
+            : robot.status === 'idle'
+              ? current.mission.status === 'paused' ? 'paused' : 'queued'
+              : current.mission.status,
+        },
+      }
+    })
+  }, [robotId, robots])
 
   useRealtimeCommandCenter(merged, handleMessage)
 
@@ -212,6 +276,13 @@ export function CommandPage() {
 
   const triggerAction = useCallback((label: string) => {
     if (label === '暂停巡检') {
+      const isPaused = merged?.mission.status === 'paused'
+      dispatchCommand({
+        id: `cmd-${isPaused ? 'resume' : 'pause'}-${Date.now()}`,
+        action: isPaused ? 'continue' : 'stop',
+        issuedAt: new Date().toISOString(),
+        auto: false,
+      }, robotId)
       setLiveData((c) => {
         if (!c) return c
         const isPaused = c.mission.status === 'paused'
@@ -226,6 +297,13 @@ export function CommandPage() {
     }
 
     if (label === '急停') {
+      const isStopped = merged?.mission.status === 'attention'
+      dispatchCommand({
+        id: `cmd-${isStopped ? 'recover' : 'estop'}-${Date.now()}`,
+        action: isStopped ? 'continue' : 'emergency-stop',
+        issuedAt: new Date().toISOString(),
+        auto: false,
+      }, robotId)
       setLiveData((c) => {
         if (!c) return c
         const isStopped = c.mission.status === 'attention'
@@ -238,13 +316,21 @@ export function CommandPage() {
       })
       return
     }
-  }, [dockState?.driveMode, setControlAuthority, updateDashboard])
+  }, [dispatchCommand, dockState?.driveMode, merged?.mission.status, robotId, setControlAuthority, updateDashboard])
 
   const confirmMovementStrategy = useCallback((strategy: MovementStrategySuggestion) => {
     setDismissedStrategyId(strategy.id)
+    dispatchCommand(commandFromStrategy(strategy), robotId)
 
     if (strategy.action === 'stop') {
-      triggerAction('暂停巡检')
+      setLiveData((current) => {
+        if (!current) return current
+        return { ...current, mission: { ...current.mission, status: 'paused' } }
+      })
+      updateDashboard((dashboard) => {
+        if (!dashboard.activeTask) return dashboard
+        return { ...dashboard, activeTask: { ...dashboard.activeTask, status: 'paused' } }
+      })
       flashHighlight('pause')
       return
     }
@@ -262,7 +348,7 @@ export function CommandPage() {
       updateMode('manual')
       flashHighlight('mode')
     }
-  }, [flashHighlight, triggerAction, updateMode])
+  }, [dispatchCommand, flashHighlight, robotId, updateDashboard, updateMode])
 
   const dismissMovementStrategy = useCallback((strategy: MovementStrategySuggestion) => {
     setDismissedStrategyId(strategy.id)

@@ -3,12 +3,8 @@ import type { ReactNode } from 'react'
 import { Badge } from '@/components/ui/Badge'
 import type { AlertItem, TrendPoint } from '@/types/dashboard'
 import type { SegmentAlertHistory } from '@/types/alerts'
-
-const PIPE_GROUPS = [
-  ['A1', 'A2'],
-  ['B1', 'B2', 'B3'],
-  ['C1', 'C2', 'C3'],
-]
+import { getNeighbors, getPropagationDirection, hasConsecutiveNeighborsWithAlert } from '@/utils/topology'
+import { mapAlertType } from '@/utils/propagation'
 
 function formatValue(value: number, unit?: string) {
   return `${Number.isInteger(value) ? value.toFixed(0) : value.toFixed(1)}${unit ?? ''}`
@@ -32,16 +28,6 @@ function sameAlertType(a: AlertItem, b: AlertItem) {
   const left = a.type ?? a.title
   const right = b.type ?? b.title
   return left === right
-}
-
-function neighborSegments(segmentId: string) {
-  const group = PIPE_GROUPS.find((items) => items.includes(segmentId))
-  if (!group) return { upstream: null, downstream: null }
-  const index = group.indexOf(segmentId)
-  return {
-    upstream: index > 0 ? group[index - 1] : null,
-    downstream: index < group.length - 1 ? group[index + 1] : null,
-  }
 }
 
 function thresholdTone(alert: AlertItem) {
@@ -89,20 +75,22 @@ function thresholdDeviation(alert: AlertItem) {
 }
 
 function getNeighborRows(alert: AlertItem, allAlerts: AlertItem[]) {
-  const neighbors = neighborSegments(alert.segmentId)
+  const neighbors = getNeighbors(alert.segmentId)
   return [
-    { label: '上游', segmentId: neighbors.upstream },
-    { label: '下游', segmentId: neighbors.downstream },
+    { label: '上游', segmentIds: neighbors.upstream },
+    { label: '下游', segmentIds: neighbors.downstream },
   ].map((row) => {
-    const matches = row.segmentId
-      ? allAlerts.filter((item) =>
-          item.segmentId === row.segmentId
-          && item.status !== 'closed'
-          && sameAlertType(item, alert),
-        )
-      : []
+    const matches = allAlerts.filter((item) =>
+      row.segmentIds.includes(item.segmentId)
+      && item.status !== 'closed'
+      && sameAlertType(item, alert),
+    )
     return { ...row, matches }
   })
+}
+
+function segmentIdsText(segmentIds: string[]) {
+  return segmentIds.length > 0 ? segmentIds.join('、') : '无'
 }
 
 const SEVERITY_ORDER = ['critical', 'warning', 'info'] as const
@@ -141,6 +129,22 @@ function SeverityDots({ matches }: { matches: AlertItem[] }) {
   )
 }
 
+function hasConsecutiveTopologySignal(alert: AlertItem, allAlerts: AlertItem[]) {
+  const alertType = mapAlertType(alert.type ?? alert.title)
+  const direction = getPropagationDirection(alertType)
+
+  return hasConsecutiveNeighborsWithAlert(
+    alert.segmentId,
+    direction,
+    (segmentId) => allAlerts.some((item) =>
+      item.segmentId === segmentId
+      && item.status !== 'closed'
+      && sameAlertType(item, alert)
+      && (item.severity === 'critical' || item.severity === 'warning'),
+    ),
+  )
+}
+
 function GradingSummary({
   alert,
   allAlerts,
@@ -152,6 +156,7 @@ function GradingSummary({
 }) {
   const deviation = thresholdDeviation(alert)
   const neighborRows = getNeighborRows(alert, allAlerts).filter((row) => row.matches.length > 0)
+  const hasConsecutive = hasConsecutiveTopologySignal(alert, allAlerts)
   const parts: { key: string; node: ReactNode }[] = [
     {
       key: 'threshold',
@@ -180,6 +185,18 @@ function GradingSummary({
               <span className="text-slate-400">({severityLabel(row.matches)})</span>
             </span>
           ))}
+        </span>
+      ),
+    })
+  }
+
+  if (hasConsecutive) {
+    parts.push({
+      key: 'topology',
+      node: (
+        <span>
+          <span className="font-medium text-white">拓扑连续</span>
+          同类告警已触发升级依据
         </span>
       ),
     })
@@ -308,7 +325,7 @@ function NeighborSegmentAlerts({
           <div key={row.label} className="rounded-lg border border-white/6 bg-slate-950/35 px-3 py-2">
             <div className="flex items-center justify-between gap-2">
               <span className="text-[11px] text-slate-500">{row.label}</span>
-              <span className="text-xs font-medium text-slate-300">{row.segmentId ?? '无'}</span>
+              <span className="truncate text-xs font-medium text-slate-300">{segmentIdsText(row.segmentIds)}</span>
             </div>
             <div className="mt-2 flex items-end justify-between gap-2">
               <div className="flex items-end gap-1.5">

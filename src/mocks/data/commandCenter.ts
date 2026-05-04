@@ -167,6 +167,8 @@ export function createCommandCenterMock(robotId = 'R1'): CommandCenterResponse {
 
   const missionTitle = robot.status === 'idle'
     ? `${robot.name} 待命中`
+    : robot.status === 'emergency'
+      ? `${robot.name} 已急停`
     : `${seg} 区段实时巡检任务`
 
   const progressPct = robot.status === 'idle' ? 0 : Math.round(robot.progress * 100)
@@ -186,7 +188,7 @@ export function createCommandCenterMock(robotId = 'R1'): CommandCenterResponse {
       segmentId: seg,
       tunnelSection: `${segLabel} 巡检段`,
       mode: 'semi-auto',
-      status: robot.status === 'idle' ? 'queued' : 'running',
+      status: robot.status === 'emergency' ? 'attention' : robot.status === 'idle' ? 'queued' : 'running',
       progressPct,
       elapsedMinutes: robot.status === 'idle' ? 0 : 18,
       etaMinutes: robot.status === 'idle' ? 0 : 21,
@@ -198,6 +200,10 @@ export function createCommandCenterMock(robotId = 'R1'): CommandCenterResponse {
       name: robot.name,
       onlineState: 'online',
       location: `${segLabel} ${Math.round(robot.progress * 280)}m`,
+      segmentId: robot.segmentId,
+      segmentProgress: robot.progress,
+      direction: robot.direction,
+      status: robot.status,
       batteryPct: robot.batteryPct,
       speedKmh: robot.speedKmh,
       headingDeg: 92,

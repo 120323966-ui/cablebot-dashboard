@@ -23,6 +23,10 @@ import type {
   PropagationChain,
   PropagationLink,
 } from '@/types/spatial'
+import { getPropagationDirection, type PropagationDirection } from './topology'
+
+export { getPropagationDirection }
+export type { PropagationDirection }
 
 /* ─────────────────────────────────────────────
    1. 中文告警类型 → AlertType 枚举映射
@@ -47,26 +51,6 @@ export function mapAlertType(input: string | undefined | null): AlertType {
     if (pattern.test(input)) return type
   }
   return 'unknown'
-}
-
-/* ─────────────────────────────────────────────
-   2. 异常类型 → 传播方向规则
-   ───────────────────────────────────────────── */
-
-export type PropagationDirection = 'both' | 'downstream' | 'upstream' | 'none'
-
-export function getPropagationDirection(type: AlertType): PropagationDirection {
-  switch (type) {
-    case 'thermal':
-    case 'gas':
-      return 'both'
-    case 'moisture':
-    case 'water':
-      return 'downstream'
-    // 其余类型仅本段,不做拓扑传播
-    default:
-      return 'none'
-  }
 }
 
 /** 给 UI 用的中文标签(便于侧栏直接展示传播方向) */

@@ -9,6 +9,7 @@ export type EventStatus = 'new' | 'acknowledged' | 'processing'
 export type OnlineState = 'online' | 'warning'
 export type NetworkQuality = 'excellent' | 'good' | 'unstable'
 export type MovementStrategyAction = 'continue' | 'slow' | 'stop' | 'takeover'
+export type RobotMotionStatus = 'inspecting' | 'moving' | 'idle' | 'emergency'
 
 export interface MovementStrategySuggestion {
   id: string
@@ -52,6 +53,14 @@ export interface CommandRobotState {
   name: string
   onlineState: OnlineState
   location: string
+  /** 机器人当前所在区段 */
+  segmentId: string
+  /** 区段内里程比例 0-1 */
+  segmentProgress: number
+  /** 行进方向：1 顺向，-1 逆向 */
+  direction: 1 | -1
+  /** 运动状态 */
+  status: RobotMotionStatus
   batteryPct: number
   speedKmh: number
   headingDeg: number
@@ -59,6 +68,26 @@ export interface CommandRobotState {
   rollDeg: number
   networkQuality: NetworkQuality
   cameraTempC: number
+}
+
+/** 控制指令：操作员确认策略或空间页调度后下发给机器人执行 */
+export interface RobotControlCommand {
+  id: string
+  action: 'continue' | 'slow' | 'stop' | 'emergency-stop' | 'move-to'
+  payload?: {
+    speedKmh?: number
+    targetSegmentId?: string
+  }
+  fromStrategyId?: string
+  issuedAt: string
+  auto: boolean
+}
+
+/** 机器人执行控制指令后的回传快照 */
+export interface RobotAck {
+  commandId: string
+  snapshot: Pick<CommandRobotState, 'segmentId' | 'segmentProgress' | 'direction' | 'speedKmh' | 'status'>
+  ackAt: string
 }
 
 export interface VideoTarget {
@@ -157,6 +186,7 @@ export type CommandRealtimeMessage =
         Pick<
           CommandRobotState,
           'batteryPct' | 'speedKmh' | 'headingDeg' | 'pitchDeg' | 'rollDeg' | 'cameraTempC' | 'networkQuality'
+          | 'segmentId' | 'segmentProgress' | 'direction' | 'status'
         >
       >
     }

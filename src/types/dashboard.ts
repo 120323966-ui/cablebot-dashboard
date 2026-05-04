@@ -45,7 +45,7 @@ export interface RobotOverview {
   speedKmh: number
   temperatureC: number
   /** 机器人当前任务状态 */
-  taskStatus: 'inspecting' | 'moving' | 'idle'
+  taskStatus: 'inspecting' | 'moving' | 'idle' | 'emergency'
   /** 巡检进度百分比 0-100 */
   taskProgressPct: number
   /** 所在区段 ID */
@@ -74,6 +74,13 @@ export interface AlertItem {
   }
   /** 当前区段最近同类监测趋势 */
   recentTrend?: TrendPoint[]
+  /** 数据源类型：移动巡检机器人或固定传感器 */
+  source?: 'mobile' | 'fixed'
+  /** 采集源位置：区段 ID + 区段内里程比例 */
+  capturePoint?: {
+    segmentId: string
+    progress: number
+  }
 
   /* ── 重复告警归并字段（可选，仅实时告警填充） ── */
 

@@ -79,6 +79,7 @@ function segmentAlertState(segmentId: string, alerts: PipeAlert[]) {
 function robotFill(s: RobotOnMap['status']) {
   if (s === 'inspecting') return '#22d3ee'
   if (s === 'moving') return '#34d399'
+  if (s === 'emergency') return '#f43f5e'
   return '#64748b'
 }
 

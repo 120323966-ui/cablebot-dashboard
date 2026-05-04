@@ -8,7 +8,7 @@ import {
   getActiveAlerts, getRobots, getKpis,
   createRealtimeAlert as sharedRealtimeAlert,
 } from './sharedSeed'
-import type { ActiveAlert } from './sharedSeed'
+import type { ActiveAlert, RobotSnapshot } from './sharedSeed'
 
 /* ── Trend helpers (chart-specific, not shared) ── */
 
@@ -80,6 +80,8 @@ function toAlertItem(alert: ActiveAlert): AlertItem {
     unit: alert.unit,
     threshold: alert.threshold,
     recentTrend: alert.recentTrend,
+    source: alert.source,
+    capturePoint: alert.capturePoint,
     groupKey: alert.groupKey,
   }
 }
@@ -127,7 +129,7 @@ export function createHomeOverviewMock(): HomeOverviewResponse {
     robots: robots.map((r) => ({
       id: r.id,
       name: r.name,
-      health: r.status === 'idle' ? 'neutral' as const : r.batteryPct < 50 ? 'warning' as const : 'good' as const,
+      health: r.status === 'emergency' ? 'danger' as const : r.status === 'idle' ? 'neutral' as const : r.batteryPct < 50 ? 'warning' as const : 'good' as const,
       batteryPct: r.batteryPct,
       signalRssi: r.signalRssi,
       location: SEGMENT_LABELS[r.segmentId] ?? r.segmentId,
@@ -155,4 +157,8 @@ export function createHomeOverviewMock(): HomeOverviewResponse {
 /** Realtime alert for Home page — delegates to shared generator */
 export function createRealtimeAlert(): AlertItem {
   return toAlertItem(sharedRealtimeAlert())
+}
+
+export function createRealtimeAlertWithRobots(robots: RobotSnapshot[]): AlertItem {
+  return toAlertItem(sharedRealtimeAlert(robots))
 }

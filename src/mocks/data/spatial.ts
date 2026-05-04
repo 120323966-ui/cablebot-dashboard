@@ -6,9 +6,24 @@ import type { SpatialPageResponse } from '@/types/spatial'
 import { SEGMENT_ENV } from './constants'
 import { getActiveAlerts, getRobots, getSegmentRisks } from './sharedSeed'
 import { mapAlertType } from '@/utils/propagation'
+import { TOPO_NODES, TOPO_SEGMENTS } from '@/utils/topology'
 
 function isoHoursAgo(h: number) {
   return new Date(Date.now() - h * 3600_000).toISOString()
+}
+
+const NODE_COORDS: Record<string, { x: number; y: number }> = {
+  'E-A': { x: 60, y: 100 },
+  'E-A2': { x: 680, y: 100 },
+  'E-B': { x: 60, y: 280 },
+  'E-B3': { x: 900, y: 280 },
+  'E-C': { x: 60, y: 460 },
+  'E-C3': { x: 900, y: 460 },
+  'J-AB1': { x: 370, y: 100 },
+  'J-B12': { x: 370, y: 280 },
+  'J-B23': { x: 620, y: 280 },
+  'J-C12': { x: 370, y: 460 },
+  'J-C23': { x: 620, y: 460 },
 }
 
 export function createSpatialPageMock(): SpatialPageResponse {
@@ -17,48 +32,29 @@ export function createSpatialPageMock(): SpatialPageResponse {
   const segmentRisks = getSegmentRisks()
 
   return {
-    nodes: [
-      { id: 'E-A', label: 'A区入口', x: 60, y: 100, type: 'entry' },
-      { id: 'E-A2', label: 'A2出口', x: 680, y: 100, type: 'entry' },
-      { id: 'E-B', label: 'B区入口', x: 60, y: 280, type: 'entry' },
-      { id: 'E-B3', label: 'B3出口', x: 900, y: 280, type: 'entry' },
-      { id: 'E-C', label: 'C区入口', x: 60, y: 460, type: 'entry' },
-      { id: 'E-C3', label: 'C3出口', x: 900, y: 460, type: 'entry' },
-      { id: 'J-AB1', label: '检查井 AB-1', x: 370, y: 100, type: 'manhole' },
-      { id: 'J-B12', label: '检查井 B-12', x: 370, y: 280, type: 'junction' },
-      { id: 'J-B23', label: '检查井 B-23', x: 620, y: 280, type: 'junction' },
-      { id: 'J-C12', label: '检查井 C-12', x: 370, y: 460, type: 'junction' },
-      { id: 'J-C23', label: '检查井 C-23', x: 620, y: 460, type: 'junction' },
-    ],
+    nodes: TOPO_NODES.map((node) => ({
+      ...node,
+      ...(NODE_COORDS[node.id] ?? { x: 0, y: 0 }),
+    })),
 
-    segments: segmentRisks.map((sr) => {
-      // Map topology (from/to nodes)
-      const topo: Record<string, { fromNode: string; toNode: string; length: number }> = {
-        A1: { fromNode: 'E-A', toNode: 'J-AB1', length: 310 },
-        A2: { fromNode: 'J-AB1', toNode: 'E-A2', length: 310 },
-        B1: { fromNode: 'E-B', toNode: 'J-B12', length: 310 },
-        B2: { fromNode: 'J-B12', toNode: 'J-B23', length: 250 },
-        B3: { fromNode: 'J-B23', toNode: 'E-B3', length: 280 },
-        C1: { fromNode: 'E-C', toNode: 'J-C12', length: 310 },
-        C2: { fromNode: 'J-C12', toNode: 'J-C23', length: 250 },
-        C3: { fromNode: 'J-C23', toNode: 'E-C3', length: 280 },
-      }
-      const t = topo[sr.segmentId] ?? { fromNode: '', toNode: '', length: 300 }
+    segments: segmentRisks.flatMap((sr) => {
+      const topology = TOPO_SEGMENTS.find((segment) => segment.id === sr.segmentId)
+      if (!topology) return []
       const hoursAgo = sr.riskLevel > 0.7 ? 0.5 : sr.riskLevel > 0.5 ? 1 : sr.riskLevel > 0.3 ? 4 : 8
       const inspected = ['A1', 'B1', 'B2', 'B3', 'C1', 'C2'].includes(sr.segmentId)
 
-      return {
+      return [{
         id: sr.segmentId,
-        fromNode: t.fromNode,
-        toNode: t.toNode,
+        fromNode: topology.fromNode,
+        toNode: topology.toNode,
         riskLevel: sr.riskLevel,
         temperatureC: sr.temperatureC,
         humidityPct: sr.humidityPct,
         activeAlerts: sr.activeAlertCount,
-        length: t.length,
+        length: topology.length,
         inspected,
         lastInspected: isoHoursAgo(hoursAgo),
-      }
+      }]
     }),
 
     // Map shared ActiveAlerts → PipeAlert format (using same AL-xxx IDs)
