@@ -198,7 +198,7 @@ export function BottomControlDock({
 
         {/* ── Group 3: Task actions + E-Stop ── */}
         <div className="flex items-center gap-1.5">
-          <Badge tone={control.recording ? 'danger' : 'neutral'}>
+          <Badge tone={control.recording ? 'good' : 'neutral'}>
             {control.recording ? 'REC' : 'IDLE'}
           </Badge>
 

@@ -1,5 +1,6 @@
 import { AlertTriangle, CheckCircle2, Filter, Repeat, XCircle } from 'lucide-react'
 import { Badge } from '@/components/ui/Badge'
+import { isFresh, useFreshnessTick } from '@/hooks/useFreshness'
 import type { AlertItem, Severity } from '@/types/dashboard'
 import type { AlertFilters } from '@/types/alerts'
 
@@ -87,6 +88,9 @@ export function AlertList({
   onFiltersChange: (f: AlertFilters) => void
   onSelect: (id: string) => void
 }) {
+  /* freshness tick — 让"新告警闪烁"在窗口边界自动停 */
+  useFreshnessTick()
+
   /* ---- Apply filters ---- */
   const filtered = alerts.filter((a) => {
     if (filters.severity !== 'all' && a.severity !== filters.severity) return false
@@ -149,10 +153,15 @@ export function AlertList({
         <div className="space-y-2">
           {filtered.map((alert) => {
             const isSelected = alert.id === selectedId
-            const isNew = alert.status === 'new' && alert.severity === 'critical'
             const repeatCount = alert.repeatCount ?? 1
             const displayEvidence = alert.latestEvidence ?? alert.evidence
             const displayTime = alert.latestOccurredAt ?? alert.occurredAt
+            /* 闪烁条件:critical + new + 在新鲜窗内(默认 30s)
+               重复触发时取 latestOccurredAt,即每次重发都重新激发动画 */
+            const isNew =
+              alert.status === 'new'
+              && alert.severity === 'critical'
+              && isFresh(displayTime)
 
             return (
               <button

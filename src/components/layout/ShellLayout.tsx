@@ -12,7 +12,7 @@ function ShellInner() {
     <div className="min-h-screen bg-app text-fg">
       <div className="mx-auto flex max-w-[1800px]">
         <SideNav />
-        <main className="min-h-screen flex-1 px-6 py-6 xl:px-8">
+        <main className="min-h-screen min-w-0 flex-1 px-6 py-6 xl:px-8">
           <TopBar />
           <Outlet />
         </main>

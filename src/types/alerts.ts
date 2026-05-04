@@ -31,6 +31,15 @@ export interface AIJudgment {
   relatedAlertIds: string[]
   generatedAt: string
   basis: string[]
+  /**
+   * 研判置信度,由证据强度综合估算:
+   *   - high   ≥ 0.7  关联强、空间临近、时间窗内反复出现
+   *   - medium 0.4-0.7 部分关联,但缺少时间或空间锚点
+   *   - low    < 0.4   关联较弱或缺乏旁证
+   * 提供给操作员衡量"是否可参考"的判断依据。
+   */
+  confidence: number
+  confidenceLevel: 'low' | 'medium' | 'high'
 }
 
 /** 筛选条件 */

@@ -3,6 +3,7 @@ import type {
   PipeAlert, PipeNode, PipeSegment, PropagationChain, PropagationLink, RobotOnMap,
 } from '@/types/spatial'
 import { getAlertTypeLabel, getPropagationDirectionLabel } from '@/utils/propagation'
+import { isFresh, useFreshnessTick } from '@/hooks/useFreshness'
 
 /* ───────── Inject keyframes once ───────── */
 
@@ -13,7 +14,7 @@ function ensureStyles() {
   el.id = STYLE_ID
   el.textContent = `
     @keyframes pm2-ping { 0% { r: 5; opacity: 0.9; } 100% { r: 14; opacity: 0; } }
-    @keyframes pm2-glow { 0%,100% { opacity: 0.4; } 50% { opacity: 1; } }
+    @keyframes pm2-glow { 0%,100% { opacity: 0.25; } 50% { opacity: 0.55; } }
     @keyframes pm2-flow { 0% { stroke-dashoffset: 24; } 100% { stroke-dashoffset: 0; } }
     /* 传播链流光 — 与方向无关,仅作存在感 */
     @keyframes pm3-prop-flow { 0% { stroke-dashoffset: 32; } 100% { stroke-dashoffset: 0; } }
@@ -133,6 +134,7 @@ export function PipelineMap({
   onDeselect: () => void
 }) {
   ensureStyles()
+  useFreshnessTick()
 
   const [tip, setTip] = useState<Tip | null>(null)
 
@@ -536,11 +538,12 @@ export function PipelineMap({
             className={onSelectAlert ? 'cursor-pointer' : 'cursor-default'}
             opacity={dotOpacity}
           >
-            {/* Ping ring — 仅起点告警在传播链激活时持续 ping;
-                其它告警仅在未激活传播链或为 critical 新告警时 ping。
-                这里保留原行为以避免与 #11 动画规范冲突;
-                #11 后续会统一处理。 */}
-            {alert.status === 'new' && (!showChain || isOriginAlert) && (
+            {/* Ping ring — 起点告警在传播链激活时持续 ping;
+                其它告警仅 status=new 且在新鲜窗口内才 ping,
+                超过窗口转为静态点,避免持续闪烁。 */}
+            {alert.status === 'new'
+              && (!showChain || isOriginAlert)
+              && (isOriginAlert || isFresh(alert.occurredAt)) && (
               <circle cx={px} cy={py} r="5" fill="none" stroke={c} strokeWidth="1.2" opacity="0.8">
                 <animate attributeName="r" values="5;14" dur="2.2s" repeatCount="indefinite" />
                 <animate attributeName="opacity" values="0.8;0" dur="2.2s" repeatCount="indefinite" />
@@ -590,13 +593,13 @@ export function PipelineMap({
               <circle cx={px} cy={py} r="16" fill="none"
                 stroke={c} strokeWidth="2" opacity="0.6"
                 strokeDasharray="4 3"
-                style={{ animation: 'pm2-glow 1.5s ease-in-out infinite' }}
+                style={{ animation: 'pm2-glow 3s ease-in-out infinite' }}
               />
             )}
-            {/* Glow ring */}
+            {/* Glow ring — 持续状态指示,使用低振幅慢节奏 */}
             <circle cx={px} cy={py} r="10" fill="none" stroke={c} strokeWidth="1"
               opacity={isSel ? 0.6 : 0.3}
-              style={{ animation: 'pm2-glow 2s ease-in-out infinite' }}
+              style={{ animation: 'pm2-glow 4s ease-in-out infinite' }}
             />
             {/* Robot body circle */}
             <circle cx={px} cy={py} r="7" fill={c} opacity={isSel ? 0.4 : 0.2} />

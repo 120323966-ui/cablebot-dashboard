@@ -3,6 +3,7 @@ import {
   ArrowDown,
   ArrowRight,
   ArrowUp,
+  Bot,
   Camera,
   CheckCircle2,
   ChevronDown,
@@ -10,6 +11,7 @@ import {
   FileText,
   Gauge,
   Minus,
+  Repeat,
   ShieldCheck,
   XCircle,
 } from 'lucide-react'
@@ -83,6 +85,21 @@ function relativeTime(iso: string) {
   const h = Math.floor(m / 60)
   if (h < 24) return `${h} 小时前`
   return `${Math.floor(h / 24)} 天前`
+}
+
+/** 用于 Header 归并行的"最新 13:24"展示 */
+function formatClock(iso: string) {
+  return new Date(iso).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+}
+
+/** 把首次到最新的实际跨度描述成"5 分钟" / "2 小时" / "1 天" */
+function repeatSpanLabel(firstIso: string, lastIso: string) {
+  const ms = new Date(lastIso).getTime() - new Date(firstIso).getTime()
+  const m = Math.max(1, Math.round(ms / 60_000))
+  if (m < 60) return `${m} 分钟`
+  const h = Math.round(m / 60)
+  if (h < 24) return `${h} 小时`
+  return `${Math.round(h / 24)} 天`
 }
 
 function trendIcon(trend: 'up' | 'down' | 'steady') {
@@ -243,6 +260,7 @@ export function AlertDetail({
 
   const segHistory = history.find((h) => h.segmentId === alert.segmentId)
   const judgment = buildAIJudgment(alert, allAlerts)
+  const repeatCount = alert.repeatCount ?? 1
 
   const handleAddNote = () => {
     if (!note.trim()) return
@@ -262,8 +280,20 @@ export function AlertDetail({
             <div className="flex items-center gap-2">
               <Badge tone={toneOf(alert.severity)}>{alert.severity}</Badge>
               <Badge tone={statusTone(alert.status)}>{statusLabel(alert.status)}</Badge>
+              {repeatCount > 1 && (
+                <span className="inline-flex items-center gap-1 rounded-md bg-white/[0.06] px-1.5 py-0.5 text-[10px] font-medium text-slate-300">
+                  <Repeat className="h-2.5 w-2.5 text-slate-400" />
+                  ×{repeatCount}
+                </span>
+              )}
             </div>
             <h3 className="mt-2 text-lg font-semibold text-white">{alert.title}</h3>
+            {repeatCount > 1 && (
+              <p className="mt-1 text-xs text-slate-400">
+                {repeatSpanLabel(alert.occurredAt, alert.latestOccurredAt!)}内累计 {repeatCount} 次,
+                最新 {formatClock(alert.latestOccurredAt!)}
+              </p>
+            )}
           </div>
           <span className="shrink-0 rounded-xl border border-white/8 bg-white/[0.03] px-3 py-1.5 text-xs text-slate-400">
             {alert.id}
@@ -273,10 +303,16 @@ export function AlertDetail({
         <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
           <div className="text-slate-500">区段</div>
           <div className="text-white">{alert.segmentId}</div>
-          <div className="text-slate-500">发生时间</div>
+          <div className="text-slate-500">{repeatCount > 1 ? '首次发生' : '发生时间'}</div>
           <div className="text-white">{relativeTime(alert.occurredAt)}</div>
-          <div className="text-slate-500">检测证据</div>
-          <div className="text-white">{alert.evidence}</div>
+          {repeatCount > 1 && (
+            <>
+              <div className="text-slate-500">最新触发</div>
+              <div className="text-white">{relativeTime(alert.latestOccurredAt!)}</div>
+            </>
+          )}
+          <div className="text-slate-500">{repeatCount > 1 ? '最新证据' : '检测证据'}</div>
+          <div className="text-white">{alert.latestEvidence ?? alert.evidence}</div>
           <div className="text-slate-500">偏离值</div>
           <div className="text-white">{alert.value}</div>
         </div>
@@ -291,19 +327,38 @@ export function AlertDetail({
         />
       </Section>
 
-      {/* ===== Module 1: 关联视觉证据 ===== */}
+      {/* ===== Module 2: AI 辅助研判(独立 Section,提到证据/历史之前) ===== */}
+      <Section icon={<Bot className="h-3.5 w-3.5" />} title="AI 辅助研判" defaultOpen>
+        <MultiSourceJudgmentCard
+          judgment={judgment}
+          onAdopt={(item) => {
+            /* 一步采纳:直接存为一条备注,不再经 input 中转 */
+            const confLabel = item.confidenceLevel === 'high' ? '高'
+              : item.confidenceLevel === 'medium' ? '中' : '低'
+            setNotes((prev) => [
+              {
+                text: `[AI 研判 · 置信${confLabel}] ${item.summary}`,
+                time: new Date().toLocaleTimeString('zh-CN'),
+              },
+              ...prev,
+            ])
+          }}
+        />
+      </Section>
+
+      {/* ===== Module 3: 关联视觉证据 ===== */}
       <Section icon={<Camera className="h-3.5 w-3.5" />} title="抓拍证据">
         <div className="relative overflow-hidden rounded-xl border border-white/8 bg-[#060e18]">
           <CaptureSnapshot alert={alert} />
         </div>
       </Section>
 
-      {/* ===== Module 2: 区段定位小地图 ===== */}
+      {/* ===== Module 4: 区段定位小地图 ===== */}
       <Section icon={<FileText className="h-3.5 w-3.5" />} title="区段定位">
         <SegmentMiniMap highlightSegment={alert.segmentId} alerts={allAlerts} />
       </Section>
 
-      {/* ===== Module 3: 历史关联 ===== */}
+      {/* ===== Module 5: 历史关联 ===== */}
       {segHistory && (
         <Section icon={<Clock className="h-3.5 w-3.5" />} title="区段历史">
           <div className="rounded-xl border border-white/8 bg-white/[0.02] p-4">
@@ -339,17 +394,10 @@ export function AlertDetail({
         </Section>
       )}
 
-      {/* ===== Module 4: 处置操作 ===== */}
+      {/* ===== Module 6: 处置操作 ===== */}
       <Section icon={<ShieldCheck className="h-3.5 w-3.5" />} title="处置操作" defaultOpen>
-        <MultiSourceJudgmentCard
-          judgment={judgment}
-          onAdopt={(item) => {
-            setNote(`AI辅助研判：${item.summary}`)
-          }}
-        />
-
         {/* 状态流转按钮 */}
-        <div className="mt-4 flex items-center gap-2">
+        <div className="flex items-center gap-2">
           {alert.status === 'new' && (
             <Button
               variant="primary"

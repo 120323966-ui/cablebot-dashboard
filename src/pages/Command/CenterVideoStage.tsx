@@ -14,7 +14,8 @@ function targetStyles(severity: VideoTarget['severity']) {
       fill: 'bg-rose-500/15',
       glow: 'shadow-[0_0_0_2px_rgba(244,63,94,0.35),0_0_24px_4px_rgba(244,63,94,0.25),0_0_48px_8px_rgba(244,63,94,0.1)]',
       chip: 'border-rose-400/40 bg-rose-500/30 text-white font-bold',
-      pulse: 'animate-[pulse_1.5s_ease-in-out_infinite]',
+      /* 有限次 pulse — 数秒后停止,符合"动画只在告警出现时使用,数秒后停止" */
+      pulse: 'animate-[pulse_1.5s_ease-in-out_4]',
       corner: 'border-rose-400',
     }
   }
@@ -89,8 +90,8 @@ export function CenterVideoStage({
             {video.resolution}
           </span>
           {control.recording && (
-            <span className="flex items-center gap-1 rounded-md border border-rose-400/30 bg-rose-500/15 px-2 py-0.5 text-[11px] text-rose-200">
-              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-rose-400" />
+            <span className="flex items-center gap-1 rounded-md border border-emerald-400/30 bg-emerald-500/15 px-2 py-0.5 text-[11px] text-emerald-200">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
               REC
             </span>
           )}

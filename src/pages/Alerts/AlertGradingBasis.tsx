@@ -1,4 +1,5 @@
-import { Activity, Gauge, GitBranch } from 'lucide-react'
+import { Activity, Gauge, GitBranch, ListChecks } from 'lucide-react'
+import type { ReactNode } from 'react'
 import { Badge } from '@/components/ui/Badge'
 import type { AlertItem, TrendPoint } from '@/types/dashboard'
 import type { SegmentAlertHistory } from '@/types/alerts'
@@ -11,6 +12,16 @@ const PIPE_GROUPS = [
 
 function formatValue(value: number, unit?: string) {
   return `${Number.isInteger(value) ? value.toFixed(0) : value.toFixed(1)}${unit ?? ''}`
+}
+
+function formatSignedValue(value: number, unit?: string) {
+  return `${value > 0 ? '+' : ''}${formatValue(value, unit)}`
+}
+
+function formatPercent(value: number) {
+  const abs = Math.abs(value)
+  const formatted = abs >= 10 ? abs.toFixed(0) : abs.toFixed(1)
+  return `${value > 0 ? '+' : value < 0 ? '-' : ''}${formatted}%`
 }
 
 function clamp(n: number, min: number, max: number) {
@@ -47,13 +58,169 @@ function thresholdTone(alert: AlertItem) {
   return 'good' as const
 }
 
+function thresholdDeviation(alert: AlertItem) {
+  if (!alert.threshold || alert.currentValue === undefined) return null
+
+  const { warn, danger } = alert.threshold
+  const lowerIsWorse = danger < warn
+  const tone = thresholdTone(alert)
+  const denominator = Math.max(1, Math.abs(danger))
+
+  if (tone === 'danger') {
+    const delta = alert.currentValue - danger
+    const pct = (delta / denominator) * 100
+    const detail = lowerIsWorse
+      ? `低于危险阈值 ${formatSignedValue(delta, alert.unit)} (${formatPercent(pct)})`
+      : `超危险阈值 ${formatSignedValue(delta, alert.unit)} (${formatPercent(pct)})`
+    const summary = lowerIsWorse
+      ? `低于危险阈值 ${formatSignedValue(delta, alert.unit)}(${formatPercent(pct)})`
+      : `超危险阈值 ${formatSignedValue(delta, alert.unit)}(${formatPercent(pct)})`
+
+    return { tone, detail, summary }
+  }
+
+  if (tone === 'warning') {
+    const gap = Math.abs(danger - alert.currentValue)
+    const detail = `接近危险阈值,差 ${formatValue(gap, alert.unit)}`
+    return { tone, detail, summary: `距危险阈值 ${formatValue(gap, alert.unit)}` }
+  }
+
+  return { tone, detail: '未达预警阈值', summary: '未达预警阈值' }
+}
+
+function getNeighborRows(alert: AlertItem, allAlerts: AlertItem[]) {
+  const neighbors = neighborSegments(alert.segmentId)
+  return [
+    { label: '上游', segmentId: neighbors.upstream },
+    { label: '下游', segmentId: neighbors.downstream },
+  ].map((row) => {
+    const matches = row.segmentId
+      ? allAlerts.filter((item) =>
+          item.segmentId === row.segmentId
+          && item.status !== 'closed'
+          && sameAlertType(item, alert),
+        )
+      : []
+    return { ...row, matches }
+  })
+}
+
+const SEVERITY_ORDER = ['critical', 'warning', 'info'] as const
+
+function severityLabel(matches: AlertItem[]) {
+  return SEVERITY_ORDER
+    .map((severity) => {
+      const count = matches.filter((item) => item.severity === severity).length
+      return count > 0 ? `${severity} ${count}` : null
+    })
+    .filter(Boolean)
+    .join(' / ')
+}
+
+function severityDotClass(severity: AlertItem['severity']) {
+  if (severity === 'critical') return 'bg-rose-400'
+  if (severity === 'warning') return 'bg-amber-400'
+  return 'bg-slate-500'
+}
+
+function SeverityDots({ matches }: { matches: AlertItem[] }) {
+  const dots = SEVERITY_ORDER.flatMap((severity) =>
+    matches
+      .filter((item) => item.severity === severity)
+      .map((item) => ({ id: item.id, severity })),
+  )
+
+  if (dots.length === 0) return null
+
+  return (
+    <div className="flex items-center gap-1" title={severityLabel(matches)}>
+      {dots.map((dot) => (
+        <span key={dot.id} className={`h-1 w-1 rounded-full ${severityDotClass(dot.severity)}`} />
+      ))}
+    </div>
+  )
+}
+
+function GradingSummary({
+  alert,
+  allAlerts,
+  history,
+}: {
+  alert: AlertItem
+  allAlerts: AlertItem[]
+  history?: SegmentAlertHistory
+}) {
+  const deviation = thresholdDeviation(alert)
+  const neighborRows = getNeighborRows(alert, allAlerts).filter((row) => row.matches.length > 0)
+  const parts: { key: string; node: ReactNode }[] = [
+    {
+      key: 'threshold',
+      node: deviation ? (
+        <span>
+          本体
+          <span className="font-medium text-white"> {deviation.summary}</span>
+        </span>
+      ) : (
+        <span>本体暂无结构化阈值数据</span>
+      ),
+    },
+  ]
+
+  if (neighborRows.length > 0) {
+    parts.push({
+      key: 'neighbors',
+      node: (
+        <span>
+          {neighborRows.map((row, idx) => (
+            <span key={row.label}>
+              {idx > 0 ? ' / ' : ''}
+              {row.label}
+              <span className="font-medium text-white"> {row.matches.length} 条</span>
+              同类待处置
+              <span className="text-slate-400">({severityLabel(row.matches)})</span>
+            </span>
+          ))}
+        </span>
+      ),
+    })
+  }
+
+  if (history) {
+    parts.push({
+      key: 'history',
+      node: (
+        <span title="包含本段所有类型的告警">
+          近 7 天该段共
+          <span className="font-medium text-white"> {history.recent7d} 次</span>
+          告警
+        </span>
+      ),
+    })
+  }
+
+  return (
+    <div className="flex gap-2 rounded-xl border border-cyan-300/15 bg-cyan-300/[0.06] px-3 py-2 text-sm text-slate-300">
+      <ListChecks className="mt-0.5 h-3.5 w-3.5 shrink-0 text-cyan-300" />
+      <div className="min-w-0">
+        <span className="mr-2 font-medium text-white">综合判断</span>
+        {parts.map((part, idx) => (
+          <span key={part.key}>
+            {idx > 0 && <span className="px-1.5 text-slate-500">·</span>}
+            {part.node}
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function ThresholdGauge({ alert }: { alert: AlertItem }) {
   if (!alert.threshold || alert.currentValue === undefined) {
     return (
       <div className="rounded-xl border border-white/8 bg-white/[0.02] p-3">
         <div className="flex items-center gap-2 text-xs font-medium text-white">
           <Gauge className="h-3.5 w-3.5 text-cyan-300" />
-          本体阈值
+          本体阈值偏离
         </div>
         <div className="mt-3 text-xs text-slate-500">暂无结构化阈值数据</div>
       </div>
@@ -72,30 +239,35 @@ function ThresholdGauge({ alert }: { alert: AlertItem }) {
   const warnPct = pct(warn)
   const dangerPct = pct(danger)
   const tone = thresholdTone(alert)
+  const deviation = thresholdDeviation(alert)
 
   return (
     <div className="rounded-xl border border-white/8 bg-white/[0.02] p-3">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-xs font-medium text-white">
           <Gauge className="h-3.5 w-3.5 text-cyan-300" />
-          本体阈值
+          本体阈值偏离
         </div>
         <Badge tone={tone}>
           {tone === 'danger' ? '危险区间' : tone === 'warning' ? '预警区间' : '正常区间'}
         </Badge>
       </div>
 
-      <div className="mt-3 flex items-end justify-between">
+      <div className="mt-3 grid grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] items-end gap-3">
         <div>
           <div className="text-[11px] text-slate-500">当前值</div>
           <div className="mt-1 text-xl font-semibold text-white">
             {formatValue(alert.currentValue, alert.unit)}
           </div>
         </div>
-        <div className="text-right text-[11px] leading-5 text-slate-400">
-          <div>预警 {formatValue(warn, alert.unit)}</div>
-          <div>危险 {formatValue(danger, alert.unit)}</div>
+        <div className="min-w-0 text-right">
+          <div className="text-[11px] text-slate-500">阈值偏离</div>
+          <div className="mt-1 text-sm font-medium leading-5 text-white">{deviation?.detail}</div>
         </div>
+      </div>
+      <div className="mt-2 flex items-center justify-end gap-3 text-[11px] leading-5 text-slate-400">
+        <span>预警 {formatValue(warn, alert.unit)}</span>
+        <span>危险 {formatValue(danger, alert.unit)}</span>
       </div>
 
       <div className="relative mt-4 h-3 rounded-full bg-slate-800">
@@ -123,26 +295,13 @@ function NeighborSegmentAlerts({
   alert: AlertItem
   allAlerts: AlertItem[]
 }) {
-  const neighbors = neighborSegments(alert.segmentId)
-  const rows = [
-    { label: '上游', segmentId: neighbors.upstream },
-    { label: '下游', segmentId: neighbors.downstream },
-  ].map((row) => {
-    const matches = row.segmentId
-      ? allAlerts.filter((item) =>
-          item.segmentId === row.segmentId
-          && item.status !== 'closed'
-          && sameAlertType(item, alert),
-        )
-      : []
-    return { ...row, matches }
-  })
+  const rows = getNeighborRows(alert, allAlerts)
 
   return (
     <div className="rounded-xl border border-white/8 bg-white/[0.02] p-3">
       <div className="flex items-center gap-2 text-xs font-medium text-white">
         <GitBranch className="h-3.5 w-3.5 text-cyan-300" />
-        上下游同类告警
+        邻段同类告警
       </div>
       <div className="mt-3 grid grid-cols-2 gap-2">
         {rows.map((row) => (
@@ -151,9 +310,12 @@ function NeighborSegmentAlerts({
               <span className="text-[11px] text-slate-500">{row.label}</span>
               <span className="text-xs font-medium text-slate-300">{row.segmentId ?? '无'}</span>
             </div>
-            <div className="mt-2 flex items-end gap-1.5">
-              <span className="text-lg font-semibold text-white">{row.matches.length}</span>
-              <span className="pb-0.5 text-[11px] text-slate-500">条同类未关闭</span>
+            <div className="mt-2 flex items-end justify-between gap-2">
+              <div className="flex items-end gap-1.5">
+                <span className="text-lg font-semibold text-white">{row.matches.length}</span>
+                <span className="pb-0.5 text-[11px] text-slate-500">条同类未关闭</span>
+              </div>
+              <SeverityDots matches={row.matches} />
             </div>
             {row.matches[0] && (
               <div className="mt-1 truncate text-[10px] text-slate-500">
@@ -182,10 +344,8 @@ function buildFallbackTrend(alert: AlertItem): TrendPoint[] {
 
 function RecentTrend({
   alert,
-  history,
 }: {
   alert: AlertItem
-  history?: SegmentAlertHistory
 }) {
   const points = alert.recentTrend?.length ? alert.recentTrend : buildFallbackTrend(alert)
   const values = points.map((point) => point.value)
@@ -200,16 +360,9 @@ function RecentTrend({
 
   return (
     <div className="rounded-xl border border-white/8 bg-white/[0.02] p-3">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 text-xs font-medium text-white">
-          <Activity className="h-3.5 w-3.5 text-cyan-300" />
-          历史趋势
-        </div>
-        {history && (
-          <span className="text-[11px] text-slate-500">
-            近 7 天 {history.recent7d} 次
-          </span>
-        )}
+      <div className="flex items-center gap-2 text-xs font-medium text-white">
+        <Activity className="h-3.5 w-3.5 text-cyan-300" />
+        传感器值变化
       </div>
       <svg viewBox="0 0 200 70" className="mt-2 h-[70px] w-full">
         <line x1="8" y1="58" x2="192" y2="58" stroke="rgba(148,163,184,0.16)" />
@@ -246,9 +399,10 @@ export function AlertGradingBasis({
 }) {
   return (
     <div className="space-y-3">
+      <GradingSummary alert={alert} allAlerts={allAlerts} history={history} />
       <ThresholdGauge alert={alert} />
       <NeighborSegmentAlerts alert={alert} allAlerts={allAlerts} />
-      <RecentTrend alert={alert} history={history} />
+      <RecentTrend alert={alert} />
     </div>
   )
 }
