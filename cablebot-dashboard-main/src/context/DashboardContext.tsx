@@ -1,0 +1,535 @@
+/**
+ * DashboardContext — 全局巡检数据上下文
+ *
+ * 解决的问题：之前 liveData 存在 HomeOverviewPage 组件内部，
+ * 切换页面后组件卸载、数据丢失、进度重置。
+ *
+ * 现在数据提升到 ShellLayout 层级的 Context 中，
+ * 整个应用生命周期内持续运行，只有刷新浏览器才会重置。
+ *
+ * v2: 告警数据也提升到全局，三个页面共享同一份告警列表。
+ *     唯一的告警生成定时器在 useRealtimeDashboard 中。
+ *
+ * v3: 新增重复告警抑制机制。
+ *     同一 groupKey 在预设时间窗口内重复到达时，不新增条目，
+ *     而是归并到已有告警上（更新 repeatCount / latestEvidence /
+ *     latestOccurredAt），同时抑制 Toast 和 TTS 通知。
+ *     当超过时间窗口或严重程度升高时恢复通知。
+ */
+
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
+import { applyRealtime, useRealtimeDashboard } from '@/hooks/useRealtimeDashboard'
+import { announceAlert, announceAutoEstop } from '@/utils/voiceAudio'
+import { getSegmentLength } from '@/utils/topology'
+import { ALERT_TYPE_PARAMS } from '@/utils/alertParams'
+import { mapAlertType } from '@/utils/propagation'
+import { SEGMENT_LABELS } from '@/mocks/data/constants'
+import { getRobots, type RobotSnapshot } from '@/mocks/data/sharedSeed'
+import type { RobotControlCommand } from '@/types/command'
+import type { AlertItem, HomeOverviewResponse, RealtimeMessage, RobotOverview, Severity } from '@/types/dashboard'
+import type { SegmentAlertHistory } from '@/types/alerts'
+import {
+  DashboardContext,
+  SEVERITY_WEIGHT,
+  type AutoEstopEvent,
+  type ControlAuthority,
+  type DashboardContextValue,
+} from './dashboardContextCore'
+
+/* ── 重复告警抑制配置 ── */
+
+/** 抑制时间窗口（毫秒），同一 groupKey 在此窗口内不重复通知 */
+const SUPPRESSION_WINDOW_MS = 60_000
+/** 位移阈值：同一区段内小于区段长度 30% 视为同一采集点附近 */
+const DISPLACEMENT_RATIO = 0.30
+
+/** 抑制映射表中每个 groupKey 对应的记录 */
+interface SuppressionRecord {
+  /** 最近一次实际通知（弹窗/播报）的时间戳 */
+  lastNotifiedAt: number
+  /** 最近一次通知时的严重程度 */
+  lastSeverity: Severity
+  /** 最近一次实际通知时的采集源位置 */
+  lastCapturePoint?: NonNullable<AlertItem['capturePoint']>
+}
+
+function isDisplacementWithinThreshold(
+  incoming?: AlertItem['capturePoint'],
+  previous?: AlertItem['capturePoint'],
+) {
+  if (!incoming || !previous) return true
+  if (incoming.segmentId !== previous.segmentId) return false
+
+  const length = getSegmentLength(incoming.segmentId)
+  const displacement = Math.abs(incoming.progress - previous.progress) * length
+  return displacement < length * DISPLACEMENT_RATIO
+}
+
+function toHomeRobot(robot: RobotSnapshot): RobotOverview {
+  return {
+    id: robot.id,
+    name: robot.name,
+    health: robot.status === 'emergency' ? 'danger' : robot.status === 'idle' ? 'neutral' : robot.batteryPct < 50 ? 'warning' : 'good',
+    batteryPct: robot.batteryPct,
+    signalRssi: robot.signalRssi,
+    location: SEGMENT_LABELS[robot.segmentId] ?? robot.segmentId,
+    speedKmh: robot.speedKmh,
+    temperatureC: robot.temperatureC,
+    taskStatus: robot.status,
+    taskProgressPct: Math.round(robot.progress * 100),
+    segmentId: robot.segmentId,
+  }
+}
+
+function advanceRobot(robot: RobotSnapshot): RobotSnapshot {
+  if (robot.status === 'idle' || robot.status === 'emergency') return robot
+
+  let nextProgress = robot.progress + robot.direction * 0.035
+  let nextDirection = robot.direction
+  if (nextProgress >= 1) {
+    nextProgress = 1 - (nextProgress - 1)
+    nextDirection = -1
+  } else if (nextProgress <= 0) {
+    nextProgress = -nextProgress
+    nextDirection = 1
+  }
+
+  return {
+    ...robot,
+    progress: Number(nextProgress.toFixed(3)),
+    direction: nextDirection,
+    batteryPct: Math.max(10, Number((robot.batteryPct - 0.05).toFixed(2))),
+    speedKmh: robot.speedKmh === 0 ? (robot.status === 'inspecting' ? 1.2 : 0.8) : robot.speedKmh,
+  }
+}
+
+function applyRobotCommand(
+  robots: RobotSnapshot[],
+  command: RobotControlCommand,
+  robotId: string,
+) {
+  return robots.map((robot) => {
+    if (robot.id !== robotId) return robot
+
+    switch (command.action) {
+      case 'stop':
+        return { ...robot, status: 'idle' as const, speedKmh: 0 }
+      case 'emergency-stop':
+        return { ...robot, status: 'emergency' as const, speedKmh: 0 }
+      case 'slow':
+        return {
+          ...robot,
+          status: robot.status === 'idle' || robot.status === 'emergency' ? 'moving' as const : robot.status,
+          speedKmh: command.payload?.speedKmh ?? 0.5,
+        }
+      case 'continue':
+        return {
+          ...robot,
+          status: 'moving' as const,
+          speedKmh: command.payload?.speedKmh ?? (robot.speedKmh > 0 ? robot.speedKmh : 1.2),
+        }
+      case 'move-to':
+        return command.payload?.targetSegmentId
+          ? {
+              ...robot,
+              segmentId: command.payload.targetSegmentId,
+              progress: 0.05,
+              direction: 1 as const,
+              status: 'moving' as const,
+              speedKmh: command.payload.speedKmh ?? 0.8,
+            }
+          : robot
+    }
+  })
+}
+
+/* ── Provider ── */
+
+export function DashboardProvider({ children }: { children: ReactNode }) {
+  const [initialData, setInitialData] = useState<HomeOverviewResponse | null>(null)
+  const [liveData, setLiveData] = useState<HomeOverviewResponse | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const fetchedRef = useRef(false)
+
+  /* ── 告警专属状态（全量列表，不受首页 top-10 截断） ── */
+  const [alertsFull, setAlertsFull] = useState<AlertItem[]>([])
+  const [alertHistory, setAlertHistory] = useState<SegmentAlertHistory[]>([])
+  const [alertSegments, setAlertSegments] = useState<string[]>([])
+  const [robots, setRobots] = useState<RobotSnapshot[]>(() => getRobots())
+
+  /* ── 全局视觉通知状态 ── */
+  const [latestNewAlert, setLatestNewAlert] = useState<AlertItem | null>(null)
+
+  /* ── 重复告警抑制映射表（不需要触发渲染，用 ref） ── */
+  const suppressionMapRef = useRef<Map<string, SuppressionRecord>>(new Map())
+
+  /* ── 机器人快照镜像 ref，供 handleMessage 内部回调读取最新值 ── */
+  const robotsRef = useRef<RobotSnapshot[]>(robots)
+  useEffect(() => {
+    robotsRef.current = robots
+  }, [robots])
+
+  /* ── 自动急停事件去重表（同一 alertId 只触发一次） ── */
+  const autoEstopFiredRef = useRef<Set<string>>(new Set())
+
+  /* ── 最近一次未确认的自动急停事件，供 UI 层显示提示横幅 ── */
+  const [autoEstopEvent, setAutoEstopEvent] = useState<AutoEstopEvent | null>(null)
+  const clearAutoEstopEvent = useCallback(() => setAutoEstopEvent(null), [])
+
+  /* ── controlAuthority 镜像，供 handleMessage 闭包内读取最新值 ── */
+  const [controlAuthority, setControlAuthority] = useState<ControlAuthority>('semi-auto')
+  const controlAuthorityRef = useRef<ControlAuthority>(controlAuthority)
+  useEffect(() => {
+    controlAuthorityRef.current = controlAuthority
+  }, [controlAuthority])
+
+  /* ── 首次加载（只请求一次，同时拉首页 + 告警页数据） ── */
+  useEffect(() => {
+    if (fetchedRef.current) return
+    fetchedRef.current = true
+
+    async function run() {
+      try {
+        const [homeRes, alertsRes] = await Promise.all([
+          fetch('/api/dashboard/home'),
+          fetch('/api/dashboard/alerts'),
+        ])
+        if (!homeRes.ok) throw new Error(`HTTP ${homeRes.status}`)
+        if (!alertsRes.ok) throw new Error(`Alerts HTTP ${alertsRes.status}`)
+
+        const homeData = (await homeRes.json()) as HomeOverviewResponse
+        const alertsData = (await alertsRes.json()) as {
+          alerts: AlertItem[]
+          history: SegmentAlertHistory[]
+          segments: string[]
+        }
+
+        setInitialData(homeData)
+        setLiveData(homeData)
+        setControlAuthority(homeData.activeTask?.mode ?? 'semi-auto')
+
+        // 初始化全量告警：取告警页数据（更完整，含 history/segments）
+        setAlertsFull(alertsData.alerts)
+        setAlertHistory(alertsData.history)
+        setAlertSegments(alertsData.segments)
+
+        setLoading(false)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : '加载失败')
+        setLoading(false)
+      }
+    }
+
+    void run()
+  }, [])
+
+  /* ── 实时消息处理 ── */
+  const merged = useMemo(() => liveData ?? initialData, [liveData, initialData])
+
+  const handleMessage = useCallback(
+    (message: RealtimeMessage) => {
+      if (message.type === 'ALERT_NEW') {
+        const incoming = message.payload
+        const now = Date.now()
+        const groupKey = incoming.groupKey
+
+        // ── 重复告警抑制判断 ──
+        if (groupKey) {
+          const map = suppressionMapRef.current
+          const record = map.get(groupKey)
+
+          if (record) {
+            const elapsed = now - record.lastNotifiedAt
+            const severityEscalated =
+              SEVERITY_WEIGHT[incoming.severity] > SEVERITY_WEIGHT[record.lastSeverity]
+            const displacementWithin = isDisplacementWithinThreshold(
+              incoming.capturePoint,
+              record.lastCapturePoint,
+            )
+
+            if (elapsed < SUPPRESSION_WINDOW_MS && displacementWithin && !severityEscalated) {
+              // ── 命中抑制：归并到已有告警，不新增条目，不通知 ──
+              setAlertsFull((prev) => {
+                const idx = prev.findIndex((a) => a.groupKey === groupKey && a.status !== 'closed')
+                if (idx === -1) {
+                  // 没找到可归并目标，回退到正常新增
+                  return [incoming, ...prev].slice(0, 50)
+                }
+                const existing = prev[idx]
+                const updated: AlertItem = {
+                  ...existing,
+                  repeatCount: (existing.repeatCount ?? 1) + 1,
+                  latestEvidence: incoming.evidence,
+                  latestOccurredAt: incoming.occurredAt,
+                }
+                const next = [...prev]
+                next[idx] = updated
+                return next
+              })
+
+              // 首页 liveData 中的 alerts 也做同步归并
+              setLiveData((current) => {
+                if (!current) return current
+                const idx = current.alerts.findIndex(
+                  (a) => a.groupKey === groupKey && a.status !== 'closed',
+                )
+                if (idx === -1) return current
+                const existing = current.alerts[idx]
+                const updated: AlertItem = {
+                  ...existing,
+                  repeatCount: (existing.repeatCount ?? 1) + 1,
+                  latestEvidence: incoming.evidence,
+                  latestOccurredAt: incoming.occurredAt,
+                }
+                const nextAlerts = [...current.alerts]
+                nextAlerts[idx] = updated
+                return {
+                  ...current,
+                  meta: { ...current.meta, updatedAt: new Date().toISOString() },
+                  alerts: nextAlerts,
+                }
+              })
+
+              // 抑制：不触发 Toast，不触发 TTS，直接返回
+              return
+            }
+
+            // ── 超出时间窗口 / 位移超阈 / 严重程度升高：恢复通知 ──
+            map.set(groupKey, {
+              lastNotifiedAt: now,
+              lastSeverity: incoming.severity,
+              lastCapturePoint: incoming.capturePoint,
+            })
+          } else {
+            // ── 首次出现该 groupKey：记录并正常通知 ──
+            map.set(groupKey, {
+              lastNotifiedAt: now,
+              lastSeverity: incoming.severity,
+              lastCapturePoint: incoming.capturePoint,
+            })
+          }
+
+          // 定期清理过期记录（避免内存泄漏）
+          if (map.size > 100) {
+            for (const [k, v] of map) {
+              if (now - v.lastNotifiedAt > SUPPRESSION_WINDOW_MS * 3) map.delete(k)
+            }
+          }
+        }
+
+        // ── 正常路径：新增告警条目 + 触发通知 ──
+
+        // 设置初始 repeatCount
+        const alertWithCount: AlertItem = { ...incoming, repeatCount: 1 }
+
+        setAlertsFull((prev) => {
+          const next = [alertWithCount, ...prev]
+            .sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime())
+            .slice(0, 50)
+          return next
+        })
+
+        // 视觉通知：critical / warning 级别触发 Toast
+        if (incoming.severity !== 'info') {
+          setLatestNewAlert(alertWithCount)
+        }
+
+        // TTS 播报（从 useRealtimeDashboard 移至此处，由抑制逻辑统一管控）
+        announceAlert(incoming.title, incoming.severity, incoming.segmentId)
+
+        /* ── 自动急停判定（对应专利权利要求 9） ──
+         * 监测值达到该异常类型的紧急阈值时，系统自动下发急停指令，
+         * 不等待操作员确认。同一告警 id 只触发一次，避免抑制路径外的重复告警重复急停。
+         *
+         * 全局守卫：当系统已处于急停状态（controlAuthority === 'emergency' 或
+         * 目标机器人 status === 'emergency'）时，跳过整个判定块——
+         * 不再触发 setAutoEstopEvent 也不再播报。机器人本就停着，覆盖横幅、
+         * 重复 TTS 都只会让操作员困惑，新的紧急告警只走普通通知路径即可。
+         * 控制权恢复后，新到来的紧急告警会再次正常触发自动急停。
+         */
+        const isAlreadyInEstop =
+          controlAuthorityRef.current === 'emergency'
+          || robotsRef.current.some((robot) => robot.status === 'emergency')
+
+        if (
+          !isAlreadyInEstop
+          && incoming.currentValue !== undefined
+          && !autoEstopFiredRef.current.has(incoming.id)
+        ) {
+          const alertType = mapAlertType(incoming.type ?? incoming.title)
+          const params = ALERT_TYPE_PARAMS[alertType]
+          const reachedEmergency = params.worseDirection === 'up'
+            ? incoming.currentValue >= params.thresholds.emergency
+            : incoming.currentValue <= params.thresholds.emergency
+
+          if (reachedEmergency) {
+            autoEstopFiredRef.current.add(incoming.id)
+
+            // 选择目标机器人：优先选当前在告警段的机器人，没有则回退到 R1（与 CommandPage 默认一致）
+            const targetRobot =
+              robotsRef.current.find((robot) => robot.segmentId === incoming.segmentId)
+              ?? robotsRef.current.find((robot) => robot.id === 'R1')
+              ?? robotsRef.current[0]
+
+            if (targetRobot) {
+              const command: RobotControlCommand = {
+                id: `auto-estop-${incoming.id}`,
+                action: 'emergency-stop',
+                fromStrategyId: undefined,
+                issuedAt: new Date().toISOString(),
+                auto: true,
+              }
+              setRobots((prev) => applyRobotCommand(prev, command, targetRobot.id))
+              setControlAuthority('emergency')
+
+              // 记录自动急停事件，供 UI 层（CommandPage 横幅）显示提示并提供"恢复"操作
+              setAutoEstopEvent({
+                id: command.id,
+                alertId: incoming.id,
+                alertTitle: incoming.title,
+                alertEvidence: incoming.evidence,
+                segmentId: incoming.segmentId,
+                robotId: targetRobot.id,
+                triggeredAt: command.issuedAt,
+              })
+
+              // 语音播报：稍后于普通告警 TTS，覆盖播报急停消息
+              announceAutoEstop({
+                eventId: command.id,
+                segmentId: incoming.segmentId,
+                alertTitle: incoming.title,
+              })
+            }
+          }
+        }
+      }
+
+      if (message.type === 'ROBOT_PULSE') {
+        setRobots((prev) =>
+          prev.map((robot) =>
+            robot.id === message.payload.id
+              ? {
+                  ...robot,
+                  batteryPct: message.payload.batteryPct ?? robot.batteryPct,
+                  signalRssi: message.payload.signalRssi ?? robot.signalRssi,
+                  temperatureC: message.payload.temperatureC ?? robot.temperatureC,
+                }
+              : robot,
+          ),
+        )
+      }
+
+      // 首页数据照常更新（alerts 字段保留 top-10）
+      setLiveData((current) => {
+        if (!current) return current
+        return applyRealtime(current, message)
+      })
+    },
+    [],
+  )
+
+  // 实时模拟定时器——在 Context 层级运行，不受页面切换影响
+  useRealtimeDashboard(merged, handleMessage, robots)
+
+  useEffect(() => {
+    if (!liveData) return
+    setLiveData((current) => {
+      if (!current) return current
+      return {
+        ...current,
+        meta: { ...current.meta, updatedAt: new Date().toISOString() },
+        robots: robots.map(toHomeRobot),
+      }
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [robots])
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setRobots((prev) => prev.map(advanceRobot))
+    }, 1500)
+    return () => window.clearInterval(timer)
+  }, [])
+
+  const dispatchCommand = useCallback((command: RobotControlCommand, robotId: string) => {
+    setRobots((prev) => applyRobotCommand(prev, command, robotId))
+
+    if (command.action === 'emergency-stop') {
+      setControlAuthority('emergency')
+    }
+  }, [])
+
+  /* ── 外部更新接口（供语音指令等使用） ── */
+  const updateData = useCallback(
+    (updater: (current: HomeOverviewResponse) => HomeOverviewResponse) => {
+      setLiveData((current) => {
+        if (!current) return current
+        return updater(current)
+      })
+    },
+    [],
+  )
+
+  /* ── 告警状态更新（跨页同步核心） ── */
+  const updateAlertStatus = useCallback(
+    (alertId: string, status: AlertItem['status']) => {
+      // 1. 更新全量告警列表
+      setAlertsFull((prev) =>
+        prev.map((a) => (a.id === alertId ? { ...a, status } : a)),
+      )
+
+      // 2. 同步更新首页 liveData 中的 alerts
+      setLiveData((current) => {
+        if (!current) return current
+        return {
+          ...current,
+          alerts: current.alerts.map((a) =>
+            a.id === alertId ? { ...a, status } : a,
+          ),
+        }
+      })
+    },
+    [],
+  )
+
+  /* ── 关闭视觉通知 ── */
+  const dismissLatestAlert = useCallback(() => {
+    setLatestNewAlert(null)
+  }, [])
+
+  const value = useMemo<DashboardContextValue>(
+    () => ({
+      data: merged,
+      loading,
+      error,
+      updateData,
+      alerts: alertsFull,
+      alertHistory,
+      alertSegments,
+      updateAlertStatus,
+      latestNewAlert,
+      dismissLatestAlert,
+      controlAuthority,
+      setControlAuthority,
+      robots,
+      dispatchCommand,
+      autoEstopEvent,
+      clearAutoEstopEvent,
+    }),
+    [merged, loading, error, updateData, alertsFull, alertHistory, alertSegments, updateAlertStatus, latestNewAlert, dismissLatestAlert, controlAuthority, robots, dispatchCommand, autoEstopEvent, clearAutoEstopEvent],
+  )
+
+  return (
+    <DashboardContext.Provider value={value}>
+      {children}
+    </DashboardContext.Provider>
+  )
+}
