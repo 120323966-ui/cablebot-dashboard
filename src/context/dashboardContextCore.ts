@@ -6,6 +6,25 @@ import type { RobotSnapshot } from '@/mocks/data/sharedSeed'
 
 export type ControlAuthority = 'auto' | 'semi-auto' | 'manual' | 'emergency'
 
+/** 自动急停事件：系统因监测值越过紧急阈值自动下发急停后，
+ *  通过 context 暴露给 UI 层显示提示横幅与"恢复"按钮。 */
+export interface AutoEstopEvent {
+  /** 事件唯一标识，用于去重显示 */
+  id: string
+  /** 触发该急停的告警 id */
+  alertId: string
+  /** 触发告警的标题（用于横幅文案） */
+  alertTitle: string
+  /** 触发告警的证据片段（如"接头 96.4°C"） */
+  alertEvidence?: string
+  /** 触发告警所在区段 id */
+  segmentId: string
+  /** 被急停的机器人 id */
+  robotId: string
+  /** 触发时间戳（ISO） */
+  triggeredAt: string
+}
+
 export interface DashboardContextValue {
   /** 合并了初始数据和实时更新的最新数据 */
   data: HomeOverviewResponse | null
@@ -36,6 +55,11 @@ export interface DashboardContextValue {
   robots: RobotSnapshot[]
   /** 下发机器人控制指令并模拟执行回传 */
   dispatchCommand: (command: RobotControlCommand, robotId: string) => void
+
+  /** 最近一次自动急停事件，null 表示当前无未确认的自动急停 */
+  autoEstopEvent: AutoEstopEvent | null
+  /** 操作员确认/恢复后清除事件，让横幅消失 */
+  clearAutoEstopEvent: () => void
 }
 
 /** 严重程度权重，用于判断"升级"场景 */

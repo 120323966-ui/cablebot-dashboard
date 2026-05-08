@@ -26,8 +26,10 @@ import {
   type ReactNode,
 } from 'react'
 import { applyRealtime, useRealtimeDashboard } from '@/hooks/useRealtimeDashboard'
-import { announceAlert } from '@/utils/voiceAudio'
+import { announceAlert, announceAutoEstop } from '@/utils/voiceAudio'
 import { getSegmentLength } from '@/utils/topology'
+import { ALERT_TYPE_PARAMS } from '@/utils/alertParams'
+import { mapAlertType } from '@/utils/propagation'
 import { SEGMENT_LABELS } from '@/mocks/data/constants'
 import { getRobots, type RobotSnapshot } from '@/mocks/data/sharedSeed'
 import type { RobotControlCommand } from '@/types/command'
@@ -36,6 +38,7 @@ import type { SegmentAlertHistory } from '@/types/alerts'
 import {
   DashboardContext,
   SEVERITY_WEIGHT,
+  type AutoEstopEvent,
   type ControlAuthority,
   type DashboardContextValue,
 } from './dashboardContextCore'
@@ -164,10 +167,29 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
 
   /* ── 全局视觉通知状态 ── */
   const [latestNewAlert, setLatestNewAlert] = useState<AlertItem | null>(null)
-  const [controlAuthority, setControlAuthority] = useState<ControlAuthority>('semi-auto')
 
   /* ── 重复告警抑制映射表（不需要触发渲染，用 ref） ── */
   const suppressionMapRef = useRef<Map<string, SuppressionRecord>>(new Map())
+
+  /* ── 机器人快照镜像 ref，供 handleMessage 内部回调读取最新值 ── */
+  const robotsRef = useRef<RobotSnapshot[]>(robots)
+  useEffect(() => {
+    robotsRef.current = robots
+  }, [robots])
+
+  /* ── 自动急停事件去重表（同一 alertId 只触发一次） ── */
+  const autoEstopFiredRef = useRef<Set<string>>(new Set())
+
+  /* ── 最近一次未确认的自动急停事件，供 UI 层显示提示横幅 ── */
+  const [autoEstopEvent, setAutoEstopEvent] = useState<AutoEstopEvent | null>(null)
+  const clearAutoEstopEvent = useCallback(() => setAutoEstopEvent(null), [])
+
+  /* ── controlAuthority 镜像，供 handleMessage 闭包内读取最新值 ── */
+  const [controlAuthority, setControlAuthority] = useState<ControlAuthority>('semi-auto')
+  const controlAuthorityRef = useRef<ControlAuthority>(controlAuthority)
+  useEffect(() => {
+    controlAuthorityRef.current = controlAuthority
+  }, [controlAuthority])
 
   /* ── 首次加载（只请求一次，同时拉首页 + 告警页数据） ── */
   useEffect(() => {
@@ -322,6 +344,72 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
 
         // TTS 播报（从 useRealtimeDashboard 移至此处，由抑制逻辑统一管控）
         announceAlert(incoming.title, incoming.severity, incoming.segmentId)
+
+        /* ── 自动急停判定（对应专利权利要求 9） ──
+         * 监测值达到该异常类型的紧急阈值时，系统自动下发急停指令，
+         * 不等待操作员确认。同一告警 id 只触发一次，避免抑制路径外的重复告警重复急停。
+         *
+         * 全局守卫：当系统已处于急停状态（controlAuthority === 'emergency' 或
+         * 目标机器人 status === 'emergency'）时，跳过整个判定块——
+         * 不再触发 setAutoEstopEvent 也不再播报。机器人本就停着，覆盖横幅、
+         * 重复 TTS 都只会让操作员困惑，新的紧急告警只走普通通知路径即可。
+         * 控制权恢复后，新到来的紧急告警会再次正常触发自动急停。
+         */
+        const isAlreadyInEstop =
+          controlAuthorityRef.current === 'emergency'
+          || robotsRef.current.some((robot) => robot.status === 'emergency')
+
+        if (
+          !isAlreadyInEstop
+          && incoming.currentValue !== undefined
+          && !autoEstopFiredRef.current.has(incoming.id)
+        ) {
+          const alertType = mapAlertType(incoming.type ?? incoming.title)
+          const params = ALERT_TYPE_PARAMS[alertType]
+          const reachedEmergency = params.worseDirection === 'up'
+            ? incoming.currentValue >= params.thresholds.emergency
+            : incoming.currentValue <= params.thresholds.emergency
+
+          if (reachedEmergency) {
+            autoEstopFiredRef.current.add(incoming.id)
+
+            // 选择目标机器人：优先选当前在告警段的机器人，没有则回退到 R1（与 CommandPage 默认一致）
+            const targetRobot =
+              robotsRef.current.find((robot) => robot.segmentId === incoming.segmentId)
+              ?? robotsRef.current.find((robot) => robot.id === 'R1')
+              ?? robotsRef.current[0]
+
+            if (targetRobot) {
+              const command: RobotControlCommand = {
+                id: `auto-estop-${incoming.id}`,
+                action: 'emergency-stop',
+                fromStrategyId: undefined,
+                issuedAt: new Date().toISOString(),
+                auto: true,
+              }
+              setRobots((prev) => applyRobotCommand(prev, command, targetRobot.id))
+              setControlAuthority('emergency')
+
+              // 记录自动急停事件，供 UI 层（CommandPage 横幅）显示提示并提供"恢复"操作
+              setAutoEstopEvent({
+                id: command.id,
+                alertId: incoming.id,
+                alertTitle: incoming.title,
+                alertEvidence: incoming.evidence,
+                segmentId: incoming.segmentId,
+                robotId: targetRobot.id,
+                triggeredAt: command.issuedAt,
+              })
+
+              // 语音播报：稍后于普通告警 TTS，覆盖播报急停消息
+              announceAutoEstop({
+                eventId: command.id,
+                segmentId: incoming.segmentId,
+                alertTitle: incoming.title,
+              })
+            }
+          }
+        }
       }
 
       if (message.type === 'ROBOT_PULSE') {
@@ -433,8 +521,10 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
       setControlAuthority,
       robots,
       dispatchCommand,
+      autoEstopEvent,
+      clearAutoEstopEvent,
     }),
-    [merged, loading, error, updateData, alertsFull, alertHistory, alertSegments, updateAlertStatus, latestNewAlert, dismissLatestAlert, controlAuthority, robots, dispatchCommand],
+    [merged, loading, error, updateData, alertsFull, alertHistory, alertSegments, updateAlertStatus, latestNewAlert, dismissLatestAlert, controlAuthority, robots, dispatchCommand, autoEstopEvent, clearAutoEstopEvent],
   )
 
   return (

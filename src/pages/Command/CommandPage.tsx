@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Button } from '@/components/ui/Button'
+import { AutoEstopBanner } from './AutoEstopBanner'
 import { BottomControlDock } from './BottomControlDock'
 import { CenterVideoStage } from './CenterVideoStage'
 import { CommandHeaderBar } from './CommandHeaderBar'
@@ -92,6 +93,59 @@ function commandFromStrategy(strategy: MovementStrategySuggestion): RobotControl
   }
 }
 
+/* ── 行进策略忽略复现机制 ──
+ * 记录"操作员忽略"或"卡片自动消失"的策略，并在以下任一条件下让建议重新弹出：
+ *   1) 关联告警严重程度发生变化（升级/降级）→ severityFingerprint 不一致；
+ *   2) 关联告警全部 closed → fingerprint 长度归零，自动失效；
+ *   3) 距上次忽略已超过 DISMISS_TTL_MS（防止永久遗忘）。
+ */
+interface DismissRecord {
+  dismissedAt: number
+  severityFingerprint: string
+}
+
+/** 3 分钟无新变化即让被忽略的策略重新弹出 */
+const DISMISS_TTL_MS = 3 * 60 * 1000
+
+function buildSeverityFingerprint(
+  alertIds: string[],
+  alertsById: Map<string, { severity: string; status: string }>,
+): string {
+  return [...alertIds]
+    .sort()
+    .map((id) => {
+      const a = alertsById.get(id)
+      // closed 告警视为不存在，让指纹自然失效
+      if (!a || a.status === 'closed') return ''
+      return `${id}:${a.severity}`
+    })
+    .filter(Boolean)
+    .join('|')
+}
+
+function isStrategySuppressed(
+  strategy: MovementStrategySuggestion,
+  dismissed: Map<string, DismissRecord>,
+  alertsById: Map<string, { severity: string; status: string }>,
+  now: number,
+): boolean {
+  const record = dismissed.get(strategy.id)
+  if (!record) return false
+
+  // 条件 1：超过 TTL，自动失效
+  if (now - record.dismissedAt > DISMISS_TTL_MS) return false
+
+  // 条件 2：当前关联告警的严重程度指纹
+  const currentFingerprint = buildSeverityFingerprint(strategy.sourceAlertIds, alertsById)
+  // 关联告警全部 closed → 指纹为空 → 失效（这条建议本就该消失）
+  if (currentFingerprint === '') return false
+
+  // 条件 3：指纹与忽略时不同 → 严重程度有变化，必须复现
+  if (currentFingerprint !== record.severityFingerprint) return false
+
+  return true
+}
+
 export function CommandPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -113,7 +167,15 @@ export function CommandPage() {
   const [dockState, setDockState] = useState<ControlState | null>(null)
   const [voiceOpen, setVoiceOpen] = useState(false)
   const [activeAux, setActiveAux] = useState<Set<string>>(new Set())
-  const [dismissedStrategyId, setDismissedStrategyId] = useState<string | null>(null)
+  /**
+   * 已忽略的策略表：
+   *  - key   = strategy.id
+   *  - value = { dismissedAt, severityFingerprint }
+   * severityFingerprint 是关联告警按 id 排序后拼出的严重程度串，
+   * 一旦严重程度发生变化（升级/降级）即视为指纹失效，建议会重新弹出。
+   * 同时超过 DISMISS_TTL_MS 后也强制失效，避免操作员遗忘。
+   */
+  const [dismissed, setDismissed] = useState<Map<string, DismissRecord>>(() => new Map())
   /** 最近一次语音操作高亮的控件 key，1秒后自动清除 */
   const [highlightKey, setHighlightKey] = useState<string | null>(null)
   const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -124,8 +186,11 @@ export function CommandPage() {
     alerts: globalAlerts,
     updateAlertStatus,
     setControlAuthority,
+    controlAuthority,
     robots,
     dispatchCommand,
+    autoEstopEvent,
+    clearAutoEstopEvent,
   } = useDashboardContext()
   const dashboardRef = useRef(dashboardData)
   dashboardRef.current = dashboardData
@@ -147,12 +212,36 @@ export function CommandPage() {
   }, [])
 
   const merged = useMemo(() => liveData ?? data, [data, liveData])
+
+  /** 关联告警快查表，供抑制判定的指纹计算使用 */
+  const alertsById = useMemo(() => {
+    const map = new Map<string, { severity: string; status: string }>()
+    for (const a of globalAlerts) map.set(a.id, { severity: a.severity, status: a.status })
+    return map
+  }, [globalAlerts])
+
+  /**
+   * 周期性触发抑制 TTL 检查：30 秒检查一次，让超过 DISMISS_TTL_MS 的记录退役。
+   * 不直接修改 dismissed 状态，而是用一个 tick 数让 movementStrategy useMemo 重算。
+   */
+  const [, setSuppressionTick] = useState(0)
+  useEffect(() => {
+    const timer = window.setInterval(() => setSuppressionTick((n) => n + 1), 30_000)
+    return () => window.clearInterval(timer)
+  }, [])
+
   const movementStrategy = useMemo(() => {
     if (!merged) return null
+
+    // 急停期间不推送行进策略：机器人已停下，操作员注意力应在恢复急停上，
+    // 此时弹卡片只会干扰决策。控制权恢复（controlAuthority 切回非 emergency）后自然重算。
+    if (controlAuthority === 'emergency' || merged.robot?.status === 'emergency') return null
+
     const strategy = deriveMovementStrategy(merged.mission, globalAlerts)
-    if (!strategy || strategy.id === dismissedStrategyId) return null
+    if (!strategy) return null
+    if (isStrategySuppressed(strategy, dismissed, alertsById, Date.now())) return null
     return strategy
-  }, [dismissedStrategyId, globalAlerts, merged])
+  }, [controlAuthority, dismissed, alertsById, globalAlerts, merged])
 
   /* ── 从全局告警列表派生 Command 页事件流 ── */
   const derivedEvents = useMemo(() => {
@@ -297,16 +386,29 @@ export function CommandPage() {
     }
 
     if (label === '急停') {
-      const isStopped = merged?.mission.status === 'attention'
+      // 急停态判定：任一条件成立即视为已处于急停。
+      // 这样无论是手动急停（修改 mission.status）、自动急停（修改 robot.status / controlAuthority）
+      // 还是两者混合，都能正确切换至"恢复"动作，不再需要点两次。
+      const isStopped =
+        merged?.mission.status === 'attention'
+        || controlAuthority === 'emergency'
+        || merged?.robot?.status === 'emergency'
+
       dispatchCommand({
         id: `cmd-${isStopped ? 'recover' : 'estop'}-${Date.now()}`,
         action: isStopped ? 'continue' : 'emergency-stop',
         issuedAt: new Date().toISOString(),
         auto: false,
       }, robotId)
+
+      // 恢复路径下顺手清除自动急停事件横幅（如有）
+      if (isStopped) {
+        clearAutoEstopEvent()
+      }
+
       setLiveData((c) => {
         if (!c) return c
-        const isStopped = c.mission.status === 'attention'
+        // 复位时控制权回到 dock 的驱动模式（默认 semi-auto），急停时切到 emergency
         setControlAuthority(isStopped ? (dockState?.driveMode ?? c.control.driveMode) : 'emergency')
         updateDashboard((d) => {
           if (!d.activeTask) return d
@@ -316,10 +418,11 @@ export function CommandPage() {
       })
       return
     }
-  }, [dispatchCommand, dockState?.driveMode, merged?.mission.status, robotId, setControlAuthority, updateDashboard])
+  }, [clearAutoEstopEvent, controlAuthority, dispatchCommand, dockState?.driveMode, merged?.mission.status, merged?.robot?.status, robotId, setControlAuthority, updateDashboard])
 
   const confirmMovementStrategy = useCallback((strategy: MovementStrategySuggestion) => {
-    setDismissedStrategyId(strategy.id)
+    // 注意：不再在确认时立即写 dismissed。卡片自身管理 pending → executing → done 三态，
+    // 抵达 done 后会通过 onDismiss 回调把记录写入 dismissed Map。
     dispatchCommand(commandFromStrategy(strategy), robotId)
 
     if (strategy.action === 'stop') {
@@ -351,8 +454,15 @@ export function CommandPage() {
   }, [dispatchCommand, flashHighlight, robotId, updateDashboard, updateMode])
 
   const dismissMovementStrategy = useCallback((strategy: MovementStrategySuggestion) => {
-    setDismissedStrategyId(strategy.id)
-  }, [])
+    setDismissed((prev) => {
+      const next = new Map(prev)
+      next.set(strategy.id, {
+        dismissedAt: Date.now(),
+        severityFingerprint: buildSeverityFingerprint(strategy.sourceAlertIds, alertsById),
+      })
+      return next
+    })
+  }, [alertsById])
 
   const viewMovementStrategyAlerts = useCallback((strategy: MovementStrategySuggestion) => {
     const firstAlertId = strategy.sourceAlertIds[0]
@@ -521,6 +631,18 @@ export function CommandPage() {
             activeAux={activeAux}
           />
 
+          {/* 自动急停提示横幅：当 DashboardContext 检测到自动急停事件时显示 */}
+          {autoEstopEvent && (
+            <AutoEstopBanner
+              event={autoEstopEvent}
+              onRecover={() => {
+                // 走与"急停按钮恢复"完全一致的路径，复用所有状态复位逻辑
+                triggerAction('急停')
+              }}
+              onDismiss={clearAutoEstopEvent}
+            />
+          )}
+
           {/* Voice dock — inline at video bottom, not a full overlay */}
           {voiceOpen && (
             <CommandVoiceDock
@@ -532,6 +654,8 @@ export function CommandPage() {
           {!voiceOpen && movementStrategy && (
             <MovementStrategyCard
               strategy={movementStrategy}
+              robot={merged.robot}
+              controlAuthority={controlAuthority}
               onConfirm={confirmMovementStrategy}
               onDismiss={dismissMovementStrategy}
               onViewAlerts={viewMovementStrategyAlerts}

@@ -143,3 +143,47 @@ export function announceAlert(
   const text = `注意，${segmentId}区段，${title}，${level}级别`
   speak(text)
 }
+
+/* ══════════════════════════════════
+   自动急停播报
+   ══════════════════════════════════ */
+
+/** 已播报的自动急停事件 id 集合，避免同一事件重复播报 */
+const announcedAutoEstops = new Set<string>()
+
+/**
+ * 自动急停语音播报。
+ *
+ * 与 announceAlert 的区别：
+ * - 不受 30 秒防抖限制（急停是系统接管，必须立即播报）
+ * - 按事件 id 去重（同一急停事件只播一次，避免组件重渲染重播）
+ * - 略微延迟播放，让先发的紧急告警 TTS 有机会播出几个字再被覆盖，
+ *   并以更醒目的措辞体现"系统已接管"
+ *
+ * 触发位置：DashboardContext 自动急停判定命中后立即调用。
+ */
+export function announceAutoEstop(params: {
+  /** 急停事件唯一 id（用于去重） */
+  eventId: string
+  /** 触发该急停的告警所在区段 */
+  segmentId: string
+  /** 触发该急停的告警标题 */
+  alertTitle: string
+}) {
+  if (_muted) return
+  if (announcedAutoEstops.has(params.eventId)) return
+  announcedAutoEstops.add(params.eventId)
+
+  // 防止集合无限膨胀，超过 50 条时清掉最早的一半
+  if (announcedAutoEstops.size > 50) {
+    const arr = Array.from(announcedAutoEstops)
+    announcedAutoEstops.clear()
+    arr.slice(-25).forEach((id) => announcedAutoEstops.add(id))
+  }
+
+  // 略微延迟，让 announceAlert 已经触发的 TTS 有机会进入队列
+  // 由于 speak() 内部会 cancel 上一条，这里 600ms 后播急停消息会盖掉同步发起的告警 TTS，
+  // 这是预期行为：急停消息优先级高于普通告警通报。
+  const text = `警告，${params.segmentId}区段监测值已超紧急阈值，系统已自动急停。${params.alertTitle}`
+  window.setTimeout(() => speak(text), 600)
+}

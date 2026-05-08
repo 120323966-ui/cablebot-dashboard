@@ -283,8 +283,22 @@ const REALTIME_TEMPLATES: { title: string; severity: 'critical' | 'warning' | 'i
   { title: 'B1 段通信延迟', severity: 'info', segment: 'B1', evidence: () => `延迟 ${irand(200, 400)}ms`, value: '建议检查中继节点' },
 ]
 
+/**
+ * 紧急阈值模板：监测值跨过 ALERT_TYPE_PARAMS 中对应类型的 emergency 阈值，
+ * 用于演示"系统自动下发急停指令、不等待操作员确认"的链路。
+ * 抽取概率约 5%，避免演示过于频繁。
+ */
+const EMERGENCY_TEMPLATES: typeof REALTIME_TEMPLATES = [
+  { title: 'B3 段接头温度突破紧急阈值', severity: 'critical', segment: 'B3', evidence: () => `接头 ${(96 + Math.random() * 4).toFixed(1)}°C`, value: '已超紧急阈值，建议立即停止行进' },
+  { title: 'A2 段水位突破紧急阈值', severity: 'critical', segment: 'A2', evidence: () => `水位 ${(51 + Math.random() * 4).toFixed(1)}cm`, value: '已超紧急阈值，建议立即停止行进' },
+]
+
+const EMERGENCY_PROBABILITY = 0.05
+
 export function createRealtimeAlert(currentRobots: RobotSnapshot[] = getRobots()): ActiveAlert {
-  const tpl = REALTIME_TEMPLATES[Math.floor(Math.random() * REALTIME_TEMPLATES.length)]
+  const useEmergencyPool = Math.random() < EMERGENCY_PROBABILITY
+  const pool = useEmergencyPool ? EMERGENCY_TEMPLATES : REALTIME_TEMPLATES
+  const tpl = pool[Math.floor(Math.random() * pool.length)]
   realtimeSeq++
 
   // 生成关联标识：区段 + 标题，用于下游重复告警归并
